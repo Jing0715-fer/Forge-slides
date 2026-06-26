@@ -117,11 +117,11 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
 
 // ---------- Export Dialog ----------
 export function ExportDialog({ open, onOpenChange }: Props) {
-  const { slides } = useEditor()
+  const { slides, masterElements } = useEditor()
   const html = React.useMemo(() => {
     if (!open) return ""
-    return exportSlidesToHtml(slides)
-  }, [slides, open])
+    return exportSlidesToHtml(slides, masterElements)
+  }, [slides, masterElements, open])
 
   function handleCopy() {
     navigator.clipboard.writeText(html)

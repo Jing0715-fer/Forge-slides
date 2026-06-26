@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Toggle } from "@/components/ui/toggle"
 import { ColorSwatchPicker } from "./ColorSwatchPicker"
 import { GradientPicker } from "./GradientPicker"
+import { SpeakerNotesPanel } from "./SpeakerNotesPanel"
 import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -24,21 +25,28 @@ export function PropertyPanel() {
   const { selectedIds, currentSlide, updateElement, bringToFront, sendToBack } = useEditor()
   const slide = currentSlide()
   const selected = slide.elements.filter((e) => selectedIds.includes(e.id))
+  let content: React.ReactNode
   if (selected.length === 0) {
-    return <EmptyPanel />
+    content = <EmptyPanel />
+  } else if (selected.length > 1) {
+    content = <MultiSelectPanel count={selected.length} />
+  } else {
+    const el = selected[0]
+    content = <SingleElementPanel key={el.id} element={el} updateElement={updateElement} bringToFront={bringToFront} sendToBack={sendToBack} />
   }
-  if (selected.length > 1) {
-    return <MultiSelectPanel count={selected.length} />
-  }
-  const el = selected[0]
-  return <SingleElementPanel key={el.id} element={el} updateElement={updateElement} bringToFront={bringToFront} sendToBack={sendToBack} />
+  return (
+    <div className="w-72 border-l bg-background flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto">{content}</div>
+      <SpeakerNotesPanel compact />
+    </div>
+  )
 }
 
 function EmptyPanel() {
   const { currentSlide, setSlideBackground } = useEditor()
   const slide = currentSlide()
   return (
-    <div className="w-72 border-l bg-background overflow-y-auto h-full">
+    <div className="h-full">
       <div className="p-4 border-b">
         <h3 className="text-sm font-semibold mb-3">Slide Properties</h3>
         <div className="space-y-3">
@@ -68,7 +76,7 @@ function EmptyPanel() {
 
 function MultiSelectPanel({ count }: { count: number }) {
   return (
-    <div className="w-72 border-l bg-background overflow-y-auto h-full p-4">
+    <div className="h-full p-4">
       <h3 className="text-sm font-semibold mb-2">Multiple Selection</h3>
       <p className="text-xs text-muted-foreground">{count} elements selected</p>
       <p className="text-xs text-muted-foreground mt-3">
@@ -95,7 +103,7 @@ function SingleElementPanel({
   }
 
   return (
-    <div className="w-72 border-l bg-background overflow-y-auto h-full">
+    <div className="h-full">
       <div className="p-4 border-b">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold capitalize">{element.type}</h3>

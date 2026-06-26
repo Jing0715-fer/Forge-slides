@@ -311,6 +311,9 @@ interface EditorState {
   currentSlideId: string
   selectedIds: string[]
   clipboard: EditorElement[]
+  // Master elements appear on ALL slides (logos, page numbers, etc.)
+  masterElements: EditorElement[]
+  masterVisible: boolean
   // history
   past: Slide[][]
   future: Slide[][]
@@ -367,6 +370,13 @@ interface EditorState {
   reorderSlides: (from: number, to: number) => void
   setSlideBackground: (id: string, bg: string) => void
   setSlideName: (id: string, name: string) => void
+  setSlideNotes: (id: string, notes: string) => void
+  setSlideTransition: (id: string, transition: "none" | "fade" | "slide" | "zoom" | "inherit") => void
+  // Master elements
+  promoteToMaster: (ids: string[]) => void
+  demoteFromMaster: (ids: string[]) => void
+  updateMasterElement: (id: string, patch: Partial<EditorElement>) => void
+  toggleMasterVisible: () => void
   // clipboard
   copy: (ids: string[]) => void
   paste: () => void
@@ -375,6 +385,7 @@ interface EditorState {
   redo: () => void
   // import / replace
   replaceSlides: (slides: Slide[]) => void
+  loadProject: (data: { slides: Slide[]; currentSlideId?: string | null }) => void
   reset: () => void
 }
 
@@ -395,6 +406,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   currentSlideId: "",
   selectedIds: [],
   clipboard: [],
+  masterElements: [],
+  masterVisible: true,
   past: [],
   future: [],
   zoom: 0.62,
@@ -876,6 +889,80 @@ export const useEditor = create<EditorState>((set, get) => ({
     })
   },
 
+  setSlideNotes: (id, notes) => {
+    set((s) => {
+      const slides = s.slides.map((sl) =>
+        sl.id === id ? { ...sl, notes } : sl,
+      )
+      return { slides }
+    })
+  },
+
+  setSlideTransition: (id, transition) => {
+    set((s) => {
+      const past = [...s.past, ...snapshot(s.slides)]
+      const slides = s.slides.map((sl) =>
+        sl.id === id ? { ...sl, transition } : sl,
+      )
+      return { slides, past: past.slice(-50), future: [] }
+    })
+  },
+
+  promoteToMaster: (ids) => {
+    set((s) => {
+      const slide = s.slides.find((sl) => sl.id === (s.currentSlideId || s.slides[0]?.id))
+      if (!slide) return s
+      const past = [...s.past, ...snapshot(s.slides)]
+      // Remove elements from current slide
+      const remaining = slide.elements.filter((el) => !ids.includes(el.id))
+      // Elements to promote
+      const promoted = slide.elements.filter((el) => ids.includes(el.id))
+      const slides = s.slides.map((sl) =>
+        sl.id === slide.id ? { ...sl, elements: remaining } : sl,
+      )
+      return {
+        slides,
+        masterElements: [...s.masterElements, ...promoted],
+        selectedIds: [],
+        past: past.slice(-50),
+        future: [],
+      }
+    })
+  },
+
+  demoteFromMaster: (ids) => {
+    set((s) => {
+      const past = [...s.past, ...snapshot(s.slides)]
+      const remaining = s.masterElements.filter((el) => !ids.includes(el.id))
+      const demoted = s.masterElements.filter((el) => ids.includes(el.id))
+      const slide = s.slides.find((sl) => sl.id === (s.currentSlideId || s.slides[0]?.id))
+      if (!slide) return { masterElements: remaining }
+      const slides = s.slides.map((sl) =>
+        sl.id === slide.id ? { ...sl, elements: [...sl.elements, ...demoted] } : sl,
+      )
+      return {
+        slides,
+        masterElements: remaining,
+        selectedIds: [],
+        past: past.slice(-50),
+        future: [],
+      }
+    })
+  },
+
+  updateMasterElement: (id, patch) => {
+    set((s) => {
+      const masterElements = s.masterElements.map((el) =>
+        el.id === id ? ({ ...el, ...patch } as EditorElement) : el,
+      )
+      return { masterElements }
+    })
+  },
+
+  toggleMasterVisible: () => {
+    set((s) => ({ masterVisible: !s.masterVisible }))
+  },
+
   copy: (ids) => {
     set((s) => {
       const slide = s.slides.find(
@@ -980,6 +1067,23 @@ export const useEditor = create<EditorState>((set, get) => ({
     })
   },
 
+  loadProject: (data) => {
+    set((s) => {
+      const past = [...s.past, ...snapshot(s.slides)]
+      const currentSlideId = data.currentSlideId && data.slides.find((sl) => sl.id === data.currentSlideId)
+        ? data.currentSlideId
+        : data.slides[0]?.id ?? ""
+      return {
+        slides: data.slides,
+        currentSlideId,
+        selectedIds: [],
+        editingId: null,
+        past: past.slice(-50),
+        future: [],
+      }
+    })
+  },
+
   reset: () => {
     const slide = defaultSlide()
     set({
@@ -987,6 +1091,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       currentSlideId: slide.id,
       selectedIds: [],
       clipboard: [],
+      masterElements: [],
+      masterVisible: true,
       past: [],
       future: [],
       editingId: null,

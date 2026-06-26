@@ -267,15 +267,19 @@ function rgbToHex(color: string): string | null {
 }
 
 // ---------- Export ----------
-export function exportSlidesToHtml(slides: Slide[]): string {
+export function exportSlidesToHtml(slides: Slide[], masterElements: EditorElement[] = []): string {
   const body = slides
     .map((slide, idx) => {
+      const masterHtml = masterElements.length > 0
+        ? masterElements.slice().sort((a, b) => a.zIndex - b.zIndex).map((el) => elementToHtml(el)).join("\n      ")
+        : ""
       const elements = slide.elements
         .slice()
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((el) => elementToHtml(el))
         .join("\n      ")
       return `  <section class="slide" data-slide="${idx + 1}" style="background:${slide.background}">
+      ${masterHtml}
       ${elements}
     </section>`
     })

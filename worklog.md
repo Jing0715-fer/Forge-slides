@@ -2,58 +2,56 @@
 
 ## Project Status
 
-**Phase**: v7 — Group resize, slide drag-reorder, presentation transitions, status bar, toolbar polish
-**Last Updated**: 2026-06-26 20:30 (Asia/Shanghai)
+**Phase**: v8 — Speaker notes, JSON project export/import, master slide system, presentation notes overlay
+**Last Updated**: 2026-06-26 20:55 (Asia/Shanghai)
 
 SlideForge is a PowerPoint-like HTML editor for fine-tuning AI-generated slides.
 The app runs on Next.js 16 at `http://localhost:3000/` (single route `/`).
 
 ---
 
-## Current State (v7)
+## Current State (v8)
 
-All v1-v6 features remain working. This session added 6 major features and fixed 2 pre-existing lint errors.
+All v1-v7 features remain working. This session added 3 major features and expanded the keyboard shortcuts dialog.
 
-### Verified This Session (agent-browser + VLM, 2026-06-26 20:30)
-- **Group Resize**: When resizing an element that's part of a group, ALL group members scale proportionally relative to the group's bounding box. Text fontSize, letterSpacing, padding, and shape strokeWidth also scale (fontSize/padding use geometric mean of X/Y scales; letterSpacing/strokeWidth use the appropriate axis). Verified: grouped all 11 welcome-slide elements, dragged SE handle of rightmost card by 100×50px → all 3 cards grew by dw~37px, dh~31px, with proportional x-offsets (0, 42, 84px). Text inside cards also enlarged. Layout preserved.
-- **Slide Drag-to-Reorder**: Slide thumbnails are now HTML5 draggable. Drag one thumbnail over another → a glowing blue drop indicator appears (before/after based on mouse midpoint). Drop reorders via `reorderSlides`. Grip handle icon appears on hover. Verified the underlying `reorderSlides` action via context menu "Move Right" (same code path) — slide order successfully swapped.
-- **Presentation Mode Transitions**: Added 4 transition types (none/fade/slide/zoom) with a selector in the bottom control bar. Slide-in direction is aware of forward/backward navigation. Verified: selected "slide" transition, pressed → to advance to slide 2, transition animation played, slide 2 displayed with progress bar at ~50%.
-- **Presentation Mode Enhancements**: Auto-play (5s/slide, toggle with P key, thin progress bar fills), elapsed timer (stopwatch in bottom-left), auto-hiding controls (mouse-move shows, 3s idle hides), transition badge in top-right.
-- **Toolbar Polish**: Removed redundant "Download" button (ExportDialog already has copy+download). Made PDF/PNG/Copy-HTML icon-only buttons with tooltips to save horizontal space. Added new "Copy HTML to clipboard" button (Clipboard icon) with toast feedback + execCommand fallback. Verified: all 6 right-side buttons visible without truncation.
-- **Status Bar**: New bottom status bar (h-6) showing: Slide N/total, element count, visible count (if different), locked count, group count, selected count, plus Snap/Grid indicators and zoom %. Verified by VLM: "Slide 1/1, 11, 1 group" on left; "Snap, Grid, 62%" on right.
-- **F5 Shortcut**: Pressing F5 opens presentation mode from the current slide. Added to keyboard handler in Editor.tsx.
-- **Updated Keyboard Shortcuts Dialog**: Added new "Presentation Mode" category (7 shortcuts: arrows, Home/End, F, P, T, Esc). Added F5 to General, group resize info to Moving & Resizing, slide context menu to Editing. Now 6 categories, 45+ shortcuts.
+### Verified This Session (agent-browser + VLM, 2026-06-26 20:55)
+- **Speaker Notes**: New `SpeakerNotesPanel` component embedded at the bottom of the Property Panel. Collapsible header with word count + estimated speaking time (130 wpm). Debounced (400ms) store updates to avoid history spam. Added `notes` and `transition` fields to the `Slide` type. Verified: typed notes → word count "38w · 0:15" appeared after debounce.
+- **JSON Project Export/Import**: New `ProjectMenu` dropdown in toolbar with "Export as JSON" and "Import from JSON". `slideforge-project.json` format includes format/version/exportedAt/slides/currentSlideId/masterElements. Import shows confirmation dialog warning about slide replacement. Verified: clicked Export → toast "Exported 1 slide as JSON project file".
+- **Master Slide System**: New `masterElements` array at store root level. Elements can be promoted to master via context menu "Promote to Master" (crown icon). Master elements render on ALL slides as read-only overlays (pointer-events: none). Right-click on a master element shows "Demote to Slide" option. Master visibility toggle (crown icon) in status bar. Verified: promoted title to master → appeared on new blank slide → status bar showed "1 master" → right-click showed demote option → undo restored original state.
+- **Presentation Notes Overlay**: In presentation mode, press **S** to toggle a speaker notes overlay (amber-themed, bottom-center, max 40% height, scrollable). "Notes" button appears in control bar when notes exist. Badge in top-right also toggles notes. Verified: pressed S in presentation mode → amber overlay appeared with "SPEAKER NOTES" header, 15-word count, and note text.
+- **Master Elements in Presentation**: Master elements render in presentation mode (behind slide elements). Verified via code review — `masterElements` passed to PresentationMode, rendered via `PresentationElement` component before slide elements.
+- **Updated Keyboard Shortcuts Dialog**: Added "Master Elements" category (3 items) and "S" shortcut to Presentation Mode category. Now 7 categories, 48+ shortcuts.
+- **Backward-Compatible Persistence**: Autosave upgraded to v2 format (`slideforge:autosave:v2`) which includes `masterElements`. Falls back to v1 format for existing sessions. Clear removes both.
 
 ### Bug Fixes This Session
-- **Fixed `react-hooks/immutability` error in PresentationMode.tsx**: `toggleFullscreen` was used in a keyboard effect before being declared. Moved the `useCallback` declaration above the effect and added it to the dependency array.
-- **Fixed `react-hooks/set-state-in-effect` error in PresentationMode.tsx**: `setIndex` was called synchronously in an effect when opening. Replaced with the React-recommended "adjust state during render" pattern using `prevOpen`/`prevCurrentSlideId` tracking state.
-- **Fixed `react-hooks/set-state-in-effect` for elapsed timer**: Moved `setElapsed(0)` reset to the render-phase transition detection, and used a `startRef` for the timer start time so the interval doesn't reset every second.
+- None — code was clean from v7. Lint passes with 0 errors throughout.
 
 ---
 
 ## Architecture
-- **State**: Zustand store at `src/store/editor-store.ts`.
-- **Types**: `src/types/editor.ts`.
+- **State**: Zustand store at `src/store/editor-store.ts` (now includes `masterElements`, `masterVisible`, `promoteToMaster`, `demoteFromMaster`, `updateMasterElement`, `toggleMasterVisible`, `setSlideNotes`, `setSlideTransition`, `loadProject`).
+- **Types**: `src/types/editor.ts` (Slide now has `notes?` and `transition?` fields).
 - **Theming**: next-themes with `attribute="class"`, ThemeProvider in layout.tsx, ThemeToggle component.
 - **Templates**: `src/lib/templates.ts` — 7 slide templates.
 - **PNG export**: `src/lib/png-export.ts` — SVG foreignObject + canvas with CORS image handling.
 - **Alignment**: `src/lib/alignment.ts`.
-- **HTML I/O**: `src/lib/html-io.ts`.
+- **HTML I/O**: `src/lib/html-io.ts` — `exportSlidesToHtml` now accepts `masterElements` parameter.
+- **Project I/O**: `src/lib/project-io.ts` (NEW) — serialize/parse/download/read SlideForge JSON project files.
 - **PDF export**: `src/lib/pdf-export.ts`.
-- **Persistence**: `src/lib/persistence.ts` + `src/hooks/use-autosave.ts`.
+- **Persistence**: `src/lib/persistence.ts` (v2 format with masterElements) + `src/hooks/use-autosave.ts`.
 - **Recent colors**: `src/hooks/use-recent-colors.ts`.
-- **Components**: Editor (with F5 shortcut + StatusBar), Toolbar (icon-only secondary buttons + Copy HTML), AlignmentToolbar (with opacity slider), TextStylePresets, Canvas (drag-drop + multi-select box), CanvasElement (group move + group resize + aspect lock), LayersPanel, SlidesPanel (drag-to-reorder + grip handles), PropertyPanel (ColorSwatchPicker + GradientPicker), ImportHtmlDialog, ExportDialog, KeyboardShortcutsDialog (6 categories), FindReplaceDialog, TemplatePickerDialog, PresentationMode (transitions + autoplay + timer + auto-hide controls), CanvasContextMenu, SlideContextMenu, ColorSwatchPicker, GradientPicker, ThemeToggle, **StatusBar (NEW)**.
+- **Components**: Editor (F5 shortcut), Toolbar (ProjectMenu + Copy HTML), AlignmentToolbar (opacity slider), TextStylePresets, Canvas (renders masterElements), CanvasElement (group move + group resize), MasterElementView (NEW — read-only master renderer), LayersPanel, SlidesPanel (drag-to-reorder), PropertyPanel (wraps SpeakerNotesPanel), SpeakerNotesPanel (NEW — collapsible notes with word count), ImportHtmlDialog, ExportDialog, KeyboardShortcutsDialog (7 categories), FindReplaceDialog, TemplatePickerDialog, PresentationMode (transitions + autoplay + timer + notes overlay + master elements), ProjectMenu (NEW — JSON export/import dropdown), CanvasContextMenu (promote/demote master), SlideContextMenu, ColorSwatchPicker, GradientPicker, ThemeToggle, StatusBar (master element toggle).
 
 ---
 
-## All Features (v1 + v2 + v3 + v4 + v5 + v6 + v7)
+## All Features (v1 through v8)
 
 ### Editing
 - PPT-like drag with smart alignment guides
 - 8-handle resize with edge snapping + Shift aspect lock
 - Rotation handle (Shift = 15° snap)
 - Double-click text edit, marquee selection, multi-select
-- Right-click context menu (elements)
+- Right-click context menu (elements) — now with Promote to Master
 - Multi-select bounding box with count label
 
 ### Elements
@@ -64,7 +62,14 @@ All v1-v6 features remain working. This session added 6 major features and fixed
 
 ### Grouping
 - Ctrl+G / Ctrl+Shift+G, group move, dashed ring
-- **Group resize — all members scale proportionally (NEW)** with text/stroke scaling
+- Group resize — all members scale proportionally with text/stroke scaling
+
+### Master Elements (NEW)
+- Promote elements to master layer (appear on all slides)
+- Demote master elements back to current slide
+- Toggle master visibility (crown icon in status bar)
+- Master elements render in editor, presentation mode, and HTML export
+- Right-click master element for demote option
 
 ### Multi-Selection
 - Align L/C/R/T/M/B, Distribute H/V, Match W/H
@@ -79,39 +84,47 @@ All v1-v6 features remain working. This session added 6 major features and fixed
 ### Slide Management
 - Right-click context menu on slide thumbnails
 - Duplicate, Delete, Move Left/Right, New Slide After
-- Contextual disabling (can't delete last slide, can't move past ends)
-- **Drag-to-reorder with drop indicators (NEW)**
+- Drag-to-reorder with drop indicators
 
 ### Color System
 - ColorSwatchPicker: 88 preset + 16 recent colors, EyeDropper
 - GradientPicker: linear/radial, angle, color stops, 12 presets
 
 ### Export
-- HTML Export (copy/download via dialog)
-- **Copy HTML to clipboard (NEW)** — quick toolbar button with toast
+- HTML Export (copy/download via dialog) — includes master elements
+- Copy HTML to clipboard — quick toolbar button
 - PDF Export (print-ready)
 - PNG Export (2x resolution, CORS-safe)
+- **JSON Project Export/Import (NEW)** — full project backup with slides, masterElements, notes
 
-### Presentation Mode (significantly enhanced)
-- Fullscreen slideshow with keyboard navigation (←/→/Space/PgUp/PgDn/Home/End)
-- **4 slide transitions: none/fade/slide/zoom (NEW)** with direction-aware animation
-- **Auto-play mode (5s/slide) with progress bar (NEW)** — toggle with P key
-- **Elapsed timer / stopwatch (NEW)**
-- **Auto-hiding controls (NEW)** — show on mouse move, hide after 3s idle
+### Speaker Notes (NEW)
+- Per-slide notes in collapsible panel (bottom of Property Panel)
+- Word count + estimated speaking time (130 wpm)
+- Debounced updates (400ms)
+- Notes overlay in presentation mode (S key to toggle)
+- Amber-themed overlay with scrollable content
+- Notes preserved in autosave and JSON export
+
+### Presentation Mode
+- Fullscreen slideshow with keyboard navigation
+- 4 slide transitions: none/fade/slide/zoom
+- Auto-play mode (5s/slide) with progress bar
+- Elapsed timer / stopwatch
+- Auto-hiding controls
+- **Speaker notes overlay (S key) (NEW)**
+- **Master elements rendered (NEW)**
 - Fullscreen toggle (F key)
-- Click zones for navigation
-- Progress bar at bottom
-- Transition selector in control bar + badge in top-right
+- Progress bar, transition selector, click zones
 
 ### Styling
 - Fill (solid/gradient), Stroke, Corner radius, Shadow, Opacity, Rotation
 - Per-slide background (solid/gradient/image)
+- Per-slide transition override (via store action, UI not yet exposed)
 
 ### UI
 - Dark mode toggle — sun/moon icons, persists via next-themes
-- **Status bar (NEW)** — slide info, element/group counts, selection count, snap/grid indicators, zoom
+- Status bar — slide info, element/group/master counts, selection count, master toggle, snap/grid indicators, zoom
 - Smooth animations and hover effects throughout
-- Contextual toolbar slide-in animation
 
 ### Slides
 - Multi-slide, add/duplicate/delete, templates, reorder via context menu + drag
@@ -123,11 +136,12 @@ All v1-v6 features remain working. This session added 6 major features and fixed
 - Undo/Redo (50-step)
 
 ### Persistence
-- Autosave (1.5s debounce), restore banner
+- Autosave (1.5s debounce) v2 format with masterElements, restore banner
 
-### Keyboard Shortcuts (45+)
-- T, Ctrl+Z/Y/C/V/D/A/S/G/H/F, **F5 (NEW)**, arrows, Shift+corner, Shift+rotate, Ctrl+Shift+L/E/R/T/M/B, ?, Esc, right-click
-- Presentation: →/Space/PgDn, ←/PgUp, Home/End, F, P, T, Esc
+### Keyboard Shortcuts (48+)
+- T, Ctrl+Z/Y/C/V/D/A/S/G/H/F, F5, arrows, Shift+corner, Shift+rotate, Ctrl+Shift+L/E/R/T/M/B, ?, Esc, right-click
+- Presentation: →/Space/PgDn, ←/PgUp, Home/End, F, P, **S (NEW)**, T, Esc
+- Master: Right-click → Promote/Demote, Status bar crown toggle
 
 ---
 
@@ -137,17 +151,19 @@ All v1-v6 features remain working. This session added 6 major features and fixed
 - PDF export opens new window (popup blockers may block).
 - PNG export uses foreignObject SVG — may not render perfectly in all browsers; cross-origin images without CORS headers will fail (handled gracefully).
 - EyeDropper API only in Chrome/Edge.
-- HTML5 drag-to-reorder for slide thumbnails may not work in all headless/automated browsers, but works in normal browsers (the underlying `reorderSlides` action is verified via context menu).
+- HTML5 drag-to-reorder for slide thumbnails may not work in all headless/automated browsers.
 - Clipboard API may be blocked in some browsers/contexts — Copy HTML has execCommand fallback.
+- Master elements cannot be edited directly on slides (must demote first). This is by design but may confuse users — consider adding a "master editor" mode.
+- Per-slide transition override is in the store but not yet exposed in the UI (only global transition in presentation mode).
 
 ## Priority Recommendations for Next Phase
-1. **Feature**: Master slide / template system — define a master slide whose elements appear on all slides.
-2. **Feature**: Snap to other elements' edges during resize (currently only snaps canvas center/edges).
-3. **Performance**: Virtualized layer list for 100+ elements.
-4. **Feature**: Keyboard-navigable layer panel (arrow keys to move focus, Enter to select).
-5. **Feature**: Custom font upload (FontFace API).
-6. **Feature**: Speaker notes panel in presentation mode.
-7. **Feature**: Slide transition preview thumbnails in slide panel.
-8. **Polish**: Animated slide thumbnails (mini preview updates in real-time).
-9. **Feature**: Export to JSON (project file) for backup/sharing.
-10. **Feature**: Alignment guides persistence (remember snap settings per project).
+1. **Feature**: Master slide editor mode — a dedicated view for editing master elements with full selection/resize.
+2. **Feature**: Per-slide transition UI — expose the `setSlideTransition` action in the slide context menu or property panel.
+3. **Feature**: Snap to other elements' edges during resize (currently only snaps canvas center/edges).
+4. **Performance**: Virtualized layer list for 100+ elements.
+5. **Feature**: Keyboard-navigable layer panel (arrow keys to move focus, Enter to select).
+6. **Feature**: Custom font upload (FontFace API).
+7. **Feature**: Slide thumbnail live preview (real-time mini render updates).
+8. **Feature**: Alignment guides persistence (remember snap settings per project).
+9. **Feature**: Export to individual PNG per slide (batch export).
+10. **Polish**: Animated transition between slides in the thumbnail panel.

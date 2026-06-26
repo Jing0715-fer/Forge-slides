@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react"
 import { useEditor, CANVAS_WIDTH, CANVAS_HEIGHT, createTextElement, createShapeElement, createImageElement, createContainerElement } from "@/store/editor-store"
 import { CanvasElementView } from "./CanvasElement"
+import { MasterElementView } from "./MasterElementView"
 import type { EditorElement } from "@/types/editor"
 import { cn } from "@/lib/utils"
 
@@ -17,6 +18,8 @@ export function Canvas() {
     zoom,
     showGrid,
     showGuides,
+    masterElements,
+    masterVisible,
   } = useEditor()
   const slide = currentSlide()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -170,6 +173,14 @@ export function Canvas() {
                 <div className="absolute top-0 left-1/2 w-px h-full bg-slate-200/60 pointer-events-none" />
                 <div className="absolute left-0 top-1/2 w-full h-px bg-slate-200/60 pointer-events-none" />
               </>
+            )}
+            {/* Master elements (rendered first = behind regular elements) */}
+            {masterVisible && masterElements.length > 0 && (
+              <div className="absolute inset-0 pointer-events-none">
+                {masterElements.slice().sort((a, b) => a.zIndex - b.zIndex).map((el) => (
+                  <MasterElementView key={el.id} element={el} />
+                ))}
+              </div>
             )}
             {/* Elements */}
             {elements.map((el) => (

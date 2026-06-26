@@ -84,6 +84,10 @@ export interface Slide {
   background: string
   backgroundImage?: string | null
   elements: EditorElement[]
+  // Speaker notes — shown in presenter view, not on the slide itself
+  notes?: string
+  // Transition type for presentation mode (overrides global setting if set)
+  transition?: "none" | "fade" | "slide" | "zoom" | "inherit"
 }
 
 // Alignment guide lines shown while dragging / resizing

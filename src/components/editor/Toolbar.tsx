@@ -13,6 +13,7 @@ import {
 import { AlignmentToolbar } from "./AlignmentToolbar"
 import { TextStylePresets } from "./TextStylePresets"
 import { ThemeToggle } from "./ThemeToggle"
+import { ProjectMenu } from "./ProjectMenu"
 import { toast } from "sonner"
 
 interface Props {
@@ -30,7 +31,7 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
     addElement, selectedIds, removeElements, duplicateElements,
     bringToFront, sendToBack, undo, redo, past, future,
     zoom, setZoom, showGrid, toggleGrid, showGuides, toggleGuides,
-    slides,
+    slides, masterElements,
   } = useEditor()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -84,7 +85,7 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
     if (url) addElement(createImageElement(url, { x: 200, y: 200 }))
   }
   function handleExport() {
-    const html = exportSlidesToHtml(slides)
+    const html = exportSlidesToHtml(slides, masterElements)
     const blob = new Blob([html], { type: "text/html" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -94,7 +95,7 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
     URL.revokeObjectURL(url)
   }
   async function handleCopyHtml() {
-    const html = exportSlidesToHtml(slides)
+    const html = exportSlidesToHtml(slides, masterElements)
     try {
       await navigator.clipboard.writeText(html)
       toast.success(`Copied ${slides.length} slide${slides.length === 1 ? "" : "s"} as HTML to clipboard`)
@@ -206,6 +207,7 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
               <HelpCircle className="w-4 h-4" />
             </TooltipBtn>
             <Separator orientation="vertical" className="h-6" />
+            <ProjectMenu />
             <Button variant="outline" size="sm" onClick={onImportClick} className="gap-1.5 h-8">
               <Upload className="w-3.5 h-3.5" /> Import
             </Button>

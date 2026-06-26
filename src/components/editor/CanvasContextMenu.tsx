@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react"
 import { useEditor } from "@/store/editor-store"
 import {
   Copy, Trash2, BringToFront, SendToBack, Lock, Unlock,
-  Group, Ungroup, ClipboardPaste,
+  Group, Ungroup, ClipboardPaste, Crown, ArrowDownToLine,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -20,7 +20,8 @@ export function CanvasContextMenu() {
   const {
     selectedIds, setSelected, removeElements, duplicateElements,
     bringToFront, sendToBack, copy, paste, groupElements, ungroupElements,
-    currentSlide, updateElement,
+    currentSlide, updateElement, promoteToMaster, demoteFromMaster,
+    masterElements,
   } = useEditor()
 
   useEffect(() => {
@@ -28,9 +29,17 @@ export function CanvasContextMenu() {
       const target = e.target as HTMLElement
       // Check if we right-clicked on or inside a canvas element
       const canvasEl = target.closest("[data-element-id]") as HTMLElement | null
+      const masterEl = target.closest("[data-master-element-id]") as HTMLElement | null
       const canvas = target.closest("#editor-canvas")
       if (!canvas) return
       e.preventDefault()
+      // Master elements: select them in a special way
+      if (masterEl) {
+        const masterId = masterEl.getAttribute("data-master-element-id")
+        setSelected([]) // clear regular selection
+        setMenu({ x: e.clientX, y: e.clientY, elementId: masterId })
+        return
+      }
       const elementId = canvasEl?.getAttribute("data-element-id") || null
       if (elementId && !selectedIds.includes(elementId)) {
         setSelected([elementId])
@@ -59,13 +68,30 @@ export function CanvasContextMenu() {
   const hasGroup = selected.some((e) => e.groupId)
   const allLocked = selected.length > 0 && selected.every((e) => e.locked)
 
+  // Check if right-clicked on a master element
+  const clickedMaster = menu.elementId ? masterElements.find((e) => e.id === menu.elementId) : null
+  const isMasterContext = !!clickedMaster
+
   const items: {
     label: string
     icon: React.ReactNode
     onClick: () => void
     disabled?: boolean
     divider?: boolean
-  }[] = [
+  }[] = isMasterContext ? [
+    // Master element context menu
+    {
+      label: "Demote to Slide",
+      icon: <ArrowDownToLine className="w-3.5 h-3.5" />,
+      onClick: () => { if (menu.elementId) demoteFromMaster([menu.elementId]); setMenu(null) },
+    },
+    {
+      label: "Master Element",
+      icon: <Crown className="w-3.5 h-3.5" />,
+      onClick: () => { setMenu(null) },
+      disabled: true,
+    },
+  ] : [
     {
       label: "Duplicate",
       icon: <Copy className="w-3.5 h-3.5" />,
@@ -123,6 +149,12 @@ export function CanvasContextMenu() {
         selected.forEach((el) => updateElement(el.id, { locked: !allLocked }))
         setMenu(null)
       },
+      disabled: !hasSelection,
+    },
+    {
+      label: "Promote to Master",
+      icon: <Crown className="w-3.5 h-3.5" />,
+      onClick: () => { promoteToMaster(selectedIds); setMenu(null) },
       disabled: !hasSelection,
     },
   ]

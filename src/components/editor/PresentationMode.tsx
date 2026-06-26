@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState, useCallback, useRef } from "react"
 import { useEditor, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/store/editor-store"
+import type { EditorElement } from "@/types/editor"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, X, Expand, Minimize, Sparkles, Pause, Play, Clock } from "lucide-react"
+import { ChevronLeft, ChevronRight, X, Expand, Minimize, Sparkles, Pause, Play, Clock, StickyNote } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type TransitionType = "none" | "fade" | "slide" | "zoom"
@@ -14,7 +15,7 @@ interface Props {
 }
 
 export function PresentationMode({ open, onOpenChange }: Props) {
-  const { slides, currentSlideId, setCurrentSlide } = useEditor()
+  const { slides, currentSlideId, setCurrentSlide, masterElements, masterVisible } = useEditor()
   const [index, setIndex] = useState(0)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [transition, setTransition] = useState<TransitionType>("fade")
@@ -23,6 +24,7 @@ export function PresentationMode({ open, onOpenChange }: Props) {
   const [autoPlay, setAutoPlay] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [showControls, setShowControls] = useState(true)
+  const [showNotes, setShowNotes] = useState(false)
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Track previous values to detect transitions (React-recommended "adjust state during render" pattern)
   const [prevOpen, setPrevOpen] = useState(false)
@@ -100,6 +102,9 @@ export function PresentationMode({ open, onOpenChange }: Props) {
       } else if (e.key === "p" || e.key === "P") {
         e.preventDefault()
         setAutoPlay((v) => !v)
+      } else if (e.key === "s" || e.key === "S") {
+        e.preventDefault()
+        setShowNotes((v) => !v)
       } else if (e.key === "t" || e.key === "T") {
         e.preventDefault()
         // Cycle through transitions
@@ -208,98 +213,16 @@ export function PresentationMode({ open, onOpenChange }: Props) {
               transform: `scale(${scaleFactor})`,
             }}
           >
+            {/* Master elements (rendered first = behind) */}
+            {masterVisible && masterElements.length > 0 && (
+              <>
+                {masterElements.slice().sort((a, b) => a.zIndex - b.zIndex).map((el) => (
+                  <PresentationElement key={`master-${el.id}`} el={el} />
+                ))}
+              </>
+            )}
             {slideElements.map((el) => (
-              <div
-                key={el.id}
-                style={{
-                  position: "absolute",
-                  left: el.x,
-                  top: el.y,
-                  width: el.width,
-                  height: el.height,
-                  transform: `rotate(${el.rotation}deg)`,
-                  opacity: el.opacity,
-                  background: el.fill,
-                  borderRadius: el.borderRadius,
-                  border: el.strokeWidth && el.stroke && el.stroke !== "transparent"
-                    ? `${el.strokeWidth}px solid ${el.stroke}`
-                    : "none",
-                  boxShadow: el.shadow
-                    ? `${el.shadowX || 0}px ${el.shadowY || 0}px ${el.shadowBlur || 24}px ${el.shadowColor || "rgba(15,23,42,0.15)"}`
-                    : "none",
-                  overflow: "hidden",
-                }}
-              >
-                {el.type === "text" && (
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      fontSize: (el as any).fontSize,
-                      fontFamily: (el as any).fontFamily,
-                      fontWeight: (el as any).fontWeight,
-                      fontStyle: (el as any).fontStyle,
-                      textDecoration: (el as any).textDecoration,
-                      textAlign: (el as any).textAlign,
-                      color: (el as any).color,
-                      lineHeight: (el as any).lineHeight,
-                      letterSpacing: (el as any).letterSpacing,
-                      padding: (el as any).padding,
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: (el as any).verticalAlign === "top"
-                        ? "flex-start"
-                        : (el as any).verticalAlign === "bottom"
-                          ? "flex-end"
-                          : "center",
-                      background: "transparent",
-                      border: "none",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {(el as any).text}
-                  </div>
-                )}
-                {el.type === "ellipse" && (
-                  <div style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
-                )}
-                {el.type === "image" && (
-                  <img
-                    src={(el as any).src}
-                    alt={(el as any).alt || ""}
-                    style={{ width: "100%", height: "100%", objectFit: (el as any).objectFit }}
-                  />
-                )}
-                {el.type === "triangle" && (
-                  <svg width="100%" height="100%" viewBox={`0 0 ${el.width} ${el.height}`} preserveAspectRatio="none" style={{ overflow: "visible" }}>
-                    <polygon
-                      points={`${el.width / 2},0 ${el.width},${el.height} 0,${el.height}`}
-                      fill={el.fill || "#f59e0b"}
-                      stroke={el.stroke || "transparent"}
-                      strokeWidth={el.strokeWidth || 0}
-                    />
-                  </svg>
-                )}
-                {el.type === "line" && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: el.height / 2 - (el.strokeWidth || 2) / 2,
-                      width: "100%",
-                      height: el.strokeWidth || 2,
-                      background: el.stroke || "#0f172a",
-                    }}
-                  />
-                )}
-                {el.type === "container" && (
-                  <div
-                    style={{ width: "100%", height: "100%" }}
-                    dangerouslySetInnerHTML={{ __html: (el as any).html || "" }}
-                  />
-                )}
-              </div>
+              <PresentationElement key={el.id} el={el} />
             ))}
           </div>
         </div>
@@ -350,6 +273,35 @@ export function PresentationMode({ open, onOpenChange }: Props) {
                 ⇄
               </button>
             </div>
+            {slide.notes && (
+              <button
+                onClick={() => setShowNotes((v) => !v)}
+                className={cn(
+                  "bg-black/60 backdrop-blur-sm rounded-full px-3 py-1 text-xs flex items-center gap-1.5 transition-colors",
+                  showNotes ? "text-amber-300 bg-amber-500/20" : "text-white/80 hover:text-white",
+                )}
+                title="Toggle speaker notes (S)"
+              >
+                <StickyNote className="w-3 h-3" />
+                Notes
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Speaker notes overlay */}
+        {showNotes && slide.notes && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-2xl w-[90%] bg-amber-50 dark:bg-amber-950/80 backdrop-blur-md border border-amber-200 dark:border-amber-800 rounded-lg shadow-2xl p-4 max-h-[40%] overflow-y-auto">
+            <div className="flex items-center gap-1.5 mb-2 text-amber-700 dark:text-amber-300">
+              <StickyNote className="w-3.5 h-3.5" />
+              <span className="text-xs font-semibold uppercase tracking-wider">Speaker Notes</span>
+              <span className="ml-auto text-[10px] text-amber-600/70 font-mono">
+                {slide.notes.trim().split(/\s+/).filter(Boolean).length} words
+              </span>
+            </div>
+            <p className="text-sm text-amber-950 dark:text-amber-100 leading-relaxed whitespace-pre-wrap">
+              {slide.notes}
+            </p>
           </div>
         )}
       </div>
@@ -400,6 +352,21 @@ export function PresentationMode({ open, onOpenChange }: Props) {
             {autoPlay ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
             {autoPlay ? "Pause" : "Auto"}
           </Button>
+          {slide.notes && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "gap-1.5",
+                showNotes ? "text-amber-300 bg-amber-500/15" : "text-white hover:bg-white/10",
+              )}
+              onClick={() => setShowNotes((v) => !v)}
+              title="Toggle speaker notes (S)"
+            >
+              <StickyNote className="w-4 h-4" />
+              Notes
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -440,6 +407,102 @@ export function PresentationMode({ open, onOpenChange }: Props) {
             style={{ animation: "preso-autoplay-fill 5s linear forwards" }}
           />
         </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- Presentation Element renderer ----------
+function PresentationElement({ el }: { el: EditorElement }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: el.x,
+        top: el.y,
+        width: el.width,
+        height: el.height,
+        transform: `rotate(${el.rotation}deg)`,
+        opacity: el.opacity,
+        background: el.fill,
+        borderRadius: el.borderRadius,
+        border: el.strokeWidth && el.stroke && el.stroke !== "transparent"
+          ? `${el.strokeWidth}px solid ${el.stroke}`
+          : "none",
+        boxShadow: el.shadow
+          ? `${el.shadowX || 0}px ${el.shadowY || 0}px ${el.shadowBlur || 24}px ${el.shadowColor || "rgba(15,23,42,0.15)"}`
+          : "none",
+        overflow: "hidden",
+      }}
+    >
+      {el.type === "text" && (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            fontSize: (el as any).fontSize,
+            fontFamily: (el as any).fontFamily,
+            fontWeight: (el as any).fontWeight,
+            fontStyle: (el as any).fontStyle,
+            textDecoration: (el as any).textDecoration,
+            textAlign: (el as any).textAlign,
+            color: (el as any).color,
+            lineHeight: (el as any).lineHeight,
+            letterSpacing: (el as any).letterSpacing,
+            padding: (el as any).padding,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: (el as any).verticalAlign === "top"
+              ? "flex-start"
+              : (el as any).verticalAlign === "bottom"
+                ? "flex-end"
+                : "center",
+            background: "transparent",
+            border: "none",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {(el as any).text}
+        </div>
+      )}
+      {el.type === "ellipse" && (
+        <div style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+      )}
+      {el.type === "image" && (
+        <img
+          src={(el as any).src}
+          alt={(el as any).alt || ""}
+          style={{ width: "100%", height: "100%", objectFit: (el as any).objectFit }}
+        />
+      )}
+      {el.type === "triangle" && (
+        <svg width="100%" height="100%" viewBox={`0 0 ${el.width} ${el.height}`} preserveAspectRatio="none" style={{ overflow: "visible" }}>
+          <polygon
+            points={`${el.width / 2},0 ${el.width},${el.height} 0,${el.height}`}
+            fill={el.fill || "#f59e0b"}
+            stroke={el.stroke || "transparent"}
+            strokeWidth={el.strokeWidth || 0}
+          />
+        </svg>
+      )}
+      {el.type === "line" && (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: el.height / 2 - (el.strokeWidth || 2) / 2,
+            width: "100%",
+            height: el.strokeWidth || 2,
+            background: el.stroke || "#0f172a",
+          }}
+        />
+      )}
+      {el.type === "container" && (
+        <div
+          style={{ width: "100%", height: "100%" }}
+          dangerouslySetInnerHTML={{ __html: (el as any).html || "" }}
+        />
       )}
     </div>
   )

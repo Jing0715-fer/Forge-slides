@@ -7,9 +7,8 @@ import { saveToLocalStorage, loadFromLocalStorage, type AutosaveData } from "@/l
 const AUTOSAVE_DEBOUNCE_MS = 1500
 
 export function useAutosave() {
-  const { slides, currentSlideId, replaceSlides, setCurrentSlide } = useEditor()
+  const { slides, currentSlideId, masterElements, replaceSlides, setCurrentSlide } = useEditor()
   const [lastSaved, setLastSaved] = useState<number | null>(null)
-  const [restoreData, setRestoreData] = useState<AutosaveData | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialized = useRef(false)
 
@@ -27,12 +26,12 @@ export function useAutosave() {
     initialized.current = true
   }, [])
 
-  // Debounced autosave whenever slides change
+  // Debounced autosave whenever slides or masterElements change
   useEffect(() => {
     if (!initialized.current) return
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
-      const ok = saveToLocalStorage(slides, currentSlideId)
+      const ok = saveToLocalStorage(slides, currentSlideId, masterElements)
       if (ok) {
         setLastSaved(Date.now())
       }
@@ -40,12 +39,16 @@ export function useAutosave() {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
     }
-  }, [slides, currentSlideId])
+  }, [slides, currentSlideId, masterElements])
 
   function acceptRestore() {
     if (restoreDataState) {
       replaceSlides(restoreDataState.slides)
       setCurrentSlide(restoreDataState.currentSlideId || restoreDataState.slides[0]?.id || "")
+      // Restore master elements
+      if (restoreDataState.masterElements) {
+        useEditor.setState({ masterElements: restoreDataState.masterElements })
+      }
     }
     setRestoreDataState(null)
   }

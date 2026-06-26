@@ -2,7 +2,7 @@
 
 import React from "react"
 import { useEditor } from "@/store/editor-store"
-import { Magnet, Grid3x3, Layers, Square, MousePointer2 } from "lucide-react"
+import { Magnet, Grid3x3, Layers, Square, MousePointer2, Crown } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function StatusBar() {
@@ -14,6 +14,9 @@ export function StatusBar() {
     showGrid,
     showGuides,
     currentSlide,
+    masterElements,
+    masterVisible,
+    toggleMasterVisible,
   } = useEditor()
 
   const slideIdx = slides.findIndex((s) => s.id === currentSlideId)
@@ -75,6 +78,19 @@ export function StatusBar() {
 
       {/* Right: view settings */}
       <div className="ml-auto flex items-center gap-3">
+        {masterElements.length > 0 && (
+          <button
+            onClick={toggleMasterVisible}
+            className={cn(
+              "flex items-center gap-1 transition-colors hover:text-foreground",
+              masterVisible ? "text-amber-500" : "text-muted-foreground/40",
+            )}
+            title={`${masterVisible ? "Hide" : "Show"} master elements (${masterElements.length})`}
+          >
+            <Crown className="w-3 h-3" />
+            <span className="tabular-nums">{masterElements.length} master</span>
+          </button>
+        )}
         <div
           className={cn(
             "flex items-center gap-1 transition-colors",

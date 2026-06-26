@@ -84,8 +84,17 @@ const SHORTCUTS: { category: string; items: { keys: string; desc: string }[] }[]
       { keys: "Home / End", desc: "First / last slide" },
       { keys: "F", desc: "Toggle fullscreen" },
       { keys: "P", desc: "Toggle auto-play (5s/slide)" },
+      { keys: "S", desc: "Toggle speaker notes overlay" },
       { keys: "T", desc: "Cycle transition (none → fade → slide → zoom)" },
       { keys: "Esc", desc: "Exit fullscreen or presentation" },
+    ],
+  },
+  {
+    category: "Master Elements",
+    items: [
+      { keys: "Right-click → Promote to Master", desc: "Move element to master layer (appears on all slides)" },
+      { keys: "Right-click master → Demote", desc: "Move master element back to current slide" },
+      { keys: "Status bar → Crown", desc: "Toggle master element visibility" },
     ],
   },
 ]
