@@ -12,6 +12,7 @@ import { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog"
 import { FindReplaceDialog } from "./FindReplaceDialog"
 import { TemplatePickerDialog } from "./TemplatePickerDialog"
 import { CanvasContextMenu } from "./CanvasContextMenu"
+import { SlideContextMenu } from "./SlideContextMenu"
 import { Toaster } from "@/components/ui/sonner"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -270,6 +271,7 @@ export function Editor() {
       <FindReplaceDialog open={findReplaceOpen} onOpenChange={setFindReplaceOpen} />
       <TemplatePickerDialog open={templateOpen} onOpenChange={setTemplateOpen} />
       <CanvasContextMenu />
+      <SlideContextMenu />
       <Toaster richColors position="bottom-right" />
     </div>
   )

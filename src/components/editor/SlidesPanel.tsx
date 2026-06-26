@@ -57,6 +57,9 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
           {slides.map((slide, idx) => (
             <div
               key={slide.id}
+              data-slide-thumb
+              data-slide-id={slide.id}
+              data-slide-index={idx}
               onClick={() => setCurrentSlide(slide.id)}
               className={cn(
                 "slide-thumb group relative w-32 h-[72px] rounded border-2 cursor-pointer shrink-0 overflow-hidden",

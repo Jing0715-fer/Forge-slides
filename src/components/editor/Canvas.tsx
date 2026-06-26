@@ -180,6 +180,31 @@ export function Canvas() {
                 editing={editingId === el.id}
               />
             ))}
+            {/* Multi-select bounding box */}
+            {selectedIds.length >= 2 && (() => {
+              const selected = elements.filter((e) => selectedIds.includes(e.id))
+              if (selected.length < 2) return null
+              const minX = Math.min(...selected.map((e) => e.x))
+              const minY = Math.min(...selected.map((e) => e.y))
+              const maxX = Math.max(...selected.map((e) => e.x + e.width))
+              const maxY = Math.max(...selected.map((e) => e.y + e.height))
+              return (
+                <div
+                  className="absolute pointer-events-none border border-dashed border-primary/50 rounded"
+                  style={{
+                    left: minX - 4,
+                    top: minY - 4,
+                    width: maxX - minX + 8,
+                    height: maxY - minY + 8,
+                    zIndex: 9998,
+                  }}
+                >
+                  <div className="absolute -top-5 left-0 text-[10px] font-mono bg-primary text-primary-foreground px-1.5 py-0.5 rounded">
+                    {selected.length} selected
+                  </div>
+                </div>
+              )
+            })()}
             {/* Marquee selection */}
             {marquee && (
               <div

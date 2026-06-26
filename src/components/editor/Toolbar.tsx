@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { AlignmentToolbar } from "./AlignmentToolbar"
 import { TextStylePresets } from "./TextStylePresets"
+import { ThemeToggle } from "./ThemeToggle"
 
 interface Props {
   onImportClick: () => void
@@ -176,6 +177,7 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
             <TooltipBtn label="Find & Replace (Ctrl+H)" onClick={onFindReplace}>
               <Search className="w-4 h-4" />
             </TooltipBtn>
+            <ThemeToggle />
             <TooltipBtn label="Keyboard Shortcuts (?)" onClick={onShowShortcuts}>
               <HelpCircle className="w-4 h-4" />
             </TooltipBtn>
