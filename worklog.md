@@ -2,56 +2,55 @@
 
 ## Project Status
 
-**Phase**: v8 — Speaker notes, JSON project export/import, master slide system, presentation notes overlay
-**Last Updated**: 2026-06-26 20:55 (Asia/Shanghai)
+**Phase**: v9 — HTML file & folder import (multi-file → multi-slide)
+**Last Updated**: 2026-06-26 21:58 (Asia/Shanghai)
 
 SlideForge is a PowerPoint-like HTML editor for fine-tuning AI-generated slides.
 The app runs on Next.js 16 at `http://localhost:3000/` (single route `/`).
 
 ---
 
-## Current State (v8)
+## Current State (v9)
 
-All v1-v7 features remain working. This session added 3 major features and expanded the keyboard shortcuts dialog.
+All v1-v8 features remain working. This session added comprehensive HTML file and folder import support.
 
-### Verified This Session (agent-browser + VLM, 2026-06-26 20:55)
-- **Speaker Notes**: New `SpeakerNotesPanel` component embedded at the bottom of the Property Panel. Collapsible header with word count + estimated speaking time (130 wpm). Debounced (400ms) store updates to avoid history spam. Added `notes` and `transition` fields to the `Slide` type. Verified: typed notes → word count "38w · 0:15" appeared after debounce.
-- **JSON Project Export/Import**: New `ProjectMenu` dropdown in toolbar with "Export as JSON" and "Import from JSON". `slideforge-project.json` format includes format/version/exportedAt/slides/currentSlideId/masterElements. Import shows confirmation dialog warning about slide replacement. Verified: clicked Export → toast "Exported 1 slide as JSON project file".
-- **Master Slide System**: New `masterElements` array at store root level. Elements can be promoted to master via context menu "Promote to Master" (crown icon). Master elements render on ALL slides as read-only overlays (pointer-events: none). Right-click on a master element shows "Demote to Slide" option. Master visibility toggle (crown icon) in status bar. Verified: promoted title to master → appeared on new blank slide → status bar showed "1 master" → right-click showed demote option → undo restored original state.
-- **Presentation Notes Overlay**: In presentation mode, press **S** to toggle a speaker notes overlay (amber-themed, bottom-center, max 40% height, scrollable). "Notes" button appears in control bar when notes exist. Badge in top-right also toggles notes. Verified: pressed S in presentation mode → amber overlay appeared with "SPEAKER NOTES" header, 15-word count, and note text.
-- **Master Elements in Presentation**: Master elements render in presentation mode (behind slide elements). Verified via code review — `masterElements` passed to PresentationMode, rendered via `PresentationElement` component before slide elements.
-- **Updated Keyboard Shortcuts Dialog**: Added "Master Elements" category (3 items) and "S" shortcut to Presentation Mode category. Now 7 categories, 48+ shortcuts.
-- **Backward-Compatible Persistence**: Autosave upgraded to v2 format (`slideforge:autosave:v2`) which includes `masterElements`. Falls back to v1 format for existing sessions. Clear removes both.
+### Verified This Session (agent-browser + VLM, 2026-06-26 21:58)
+- **HTML File Upload**: New "File" tab in ImportHtmlDialog. Click or drag-and-drop .html/.htm files into the drop zone. Multiple files are supported — each file becomes one or more slides. Files are listed with name, filename, char count, size badge, and "first"/"last" position badges. Files can be removed individually. Verified: uploaded 3 HTML files → file list showed all 3 with "2.9 KB" total size badge and first/last badges.
+- **HTML Folder Upload**: New "Folder" tab in ImportHtmlDialog. Uses `webkitdirectory` attribute to select a folder. All .html files in the folder (and subfolders) are collected, sorted alphabetically (natural numeric sort), and become slides. Same file list UI as File tab.
+- **Multi-File Parsing**: New `parseMultipleHtmlToSlides(files: ParsedFile[])` function in `html-io.ts`. Each file is parsed independently — if a file contains multiple `<section class="slide">` elements, each becomes a separate slide. Slide names use the filename (without extension), with "(N)" suffix if a file produces multiple slides. Files are pre-sorted by the caller using natural numeric sort (so "slide-02" comes before "slide-10").
+- **Tabbed Import UI**: ImportHtmlDialog completely redesigned with 3 tabs (Paste / File / Folder), each with appropriate icons (ClipboardPaste, FileUp, FolderUp). Smart/Raw mode toggle moved below the tabs as a segmented control. Drag-and-drop zones have hover and active states. Pending files list shows file icons, names, metadata, and remove buttons.
+- **Raw Mode Multi-File**: When importing multiple files in Raw mode, each file becomes a slide with a full-canvas container element (1160×600). Uses `loadProject` to replace all slides.
+- **Verified Import**: Created 3 test HTML files (gradient title slide, agenda with white cards, dark slide with 3 colored gradient cards). Uploaded all 3 via File tab → clicked Import → toast "Imported 3 slides from 3 file(s)" → 3 slide thumbnails appeared → navigated to each slide → all elements (titles, cards, gradients, text) rendered correctly.
 
 ### Bug Fixes This Session
-- None — code was clean from v7. Lint passes with 0 errors throughout.
+- None — code was clean from v8. Lint passes with 0 errors.
 
 ---
 
 ## Architecture
-- **State**: Zustand store at `src/store/editor-store.ts` (now includes `masterElements`, `masterVisible`, `promoteToMaster`, `demoteFromMaster`, `updateMasterElement`, `toggleMasterVisible`, `setSlideNotes`, `setSlideTransition`, `loadProject`).
-- **Types**: `src/types/editor.ts` (Slide now has `notes?` and `transition?` fields).
+- **State**: Zustand store at `src/store/editor-store.ts` (includes masterElements, masterVisible, promoteToMaster, demoteFromMaster, updateMasterElement, toggleMasterVisible, setSlideNotes, setSlideTransition, loadProject).
+- **Types**: `src/types/editor.ts` (Slide has notes?, transition? fields).
 - **Theming**: next-themes with `attribute="class"`, ThemeProvider in layout.tsx, ThemeToggle component.
 - **Templates**: `src/lib/templates.ts` — 7 slide templates.
 - **PNG export**: `src/lib/png-export.ts` — SVG foreignObject + canvas with CORS image handling.
 - **Alignment**: `src/lib/alignment.ts`.
-- **HTML I/O**: `src/lib/html-io.ts` — `exportSlidesToHtml` now accepts `masterElements` parameter.
-- **Project I/O**: `src/lib/project-io.ts` (NEW) — serialize/parse/download/read SlideForge JSON project files.
+- **HTML I/O**: `src/lib/html-io.ts` — `parseHtmlToSlides` (single HTML), `parseMultipleHtmlToSlides` (NEW — multi-file), `exportSlidesToHtml` (accepts masterElements), `ParsedFile` type (NEW).
+- **Project I/O**: `src/lib/project-io.ts` — SlideForge JSON project files.
 - **PDF export**: `src/lib/pdf-export.ts`.
 - **Persistence**: `src/lib/persistence.ts` (v2 format with masterElements) + `src/hooks/use-autosave.ts`.
 - **Recent colors**: `src/hooks/use-recent-colors.ts`.
-- **Components**: Editor (F5 shortcut), Toolbar (ProjectMenu + Copy HTML), AlignmentToolbar (opacity slider), TextStylePresets, Canvas (renders masterElements), CanvasElement (group move + group resize), MasterElementView (NEW — read-only master renderer), LayersPanel, SlidesPanel (drag-to-reorder), PropertyPanel (wraps SpeakerNotesPanel), SpeakerNotesPanel (NEW — collapsible notes with word count), ImportHtmlDialog, ExportDialog, KeyboardShortcutsDialog (7 categories), FindReplaceDialog, TemplatePickerDialog, PresentationMode (transitions + autoplay + timer + notes overlay + master elements), ProjectMenu (NEW — JSON export/import dropdown), CanvasContextMenu (promote/demote master), SlideContextMenu, ColorSwatchPicker, GradientPicker, ThemeToggle, StatusBar (master element toggle).
+- **Components**: Editor (F5 shortcut), Toolbar (ProjectMenu + Copy HTML), AlignmentToolbar (opacity slider), TextStylePresets, Canvas (renders masterElements), CanvasElement (group move + group resize), MasterElementView (read-only master renderer), LayersPanel, SlidesPanel (drag-to-reorder), PropertyPanel (wraps SpeakerNotesPanel), SpeakerNotesPanel (collapsible notes with word count), ImportHtmlDialog (REDESIGNED — 3-tab Paste/File/Folder with drag-drop + file list), ExportDialog, KeyboardShortcutsDialog (7 categories), FindReplaceDialog, TemplatePickerDialog, PresentationMode (transitions + autoplay + timer + notes overlay + master elements), ProjectMenu (JSON export/import dropdown), CanvasContextMenu (promote/demote master), SlideContextMenu, ColorSwatchPicker, GradientPicker, ThemeToggle, StatusBar (master element toggle).
 
 ---
 
-## All Features (v1 through v8)
+## All Features (v1 through v9)
 
 ### Editing
 - PPT-like drag with smart alignment guides
 - 8-handle resize with edge snapping + Shift aspect lock
 - Rotation handle (Shift = 15° snap)
 - Double-click text edit, marquee selection, multi-select
-- Right-click context menu (elements) — now with Promote to Master
+- Right-click context menu (elements) — with Promote to Master
 - Multi-select bounding box with count label
 
 ### Elements
@@ -64,12 +63,21 @@ All v1-v7 features remain working. This session added 3 major features and expan
 - Ctrl+G / Ctrl+Shift+G, group move, dashed ring
 - Group resize — all members scale proportionally with text/stroke scaling
 
-### Master Elements (NEW)
+### Master Elements
 - Promote elements to master layer (appear on all slides)
 - Demote master elements back to current slide
 - Toggle master visibility (crown icon in status bar)
 - Master elements render in editor, presentation mode, and HTML export
-- Right-click master element for demote option
+
+### HTML Import (significantly enhanced in v9)
+- **Paste mode**: paste HTML directly into a textarea (Smart or Raw)
+- **File upload (NEW)**: select one or more .html/.htm files via click or drag-and-drop
+- **Folder upload (NEW)**: select a folder — all HTML files become slides (sorted alphabetically)
+- **Smart mode**: extracts positioned text, shapes, images as editable elements
+- **Raw mode**: keeps HTML intact in a container (single file → current slide; multi-file → one slide per file)
+- **Multi-file parsing (NEW)**: each file can contain one or multiple `<section class="slide">` elements
+- **File list UI (NEW)**: shows filename, char count, size badge, first/last position badges, remove button
+- **Drag-and-drop (NEW)**: drop HTML files directly onto the upload zone
 
 ### Multi-Selection
 - Align L/C/R/T/M/B, Distribute H/V, Match W/H
@@ -95,14 +103,13 @@ All v1-v7 features remain working. This session added 3 major features and expan
 - Copy HTML to clipboard — quick toolbar button
 - PDF Export (print-ready)
 - PNG Export (2x resolution, CORS-safe)
-- **JSON Project Export/Import (NEW)** — full project backup with slides, masterElements, notes
+- JSON Project Export/Import — full project backup with slides, masterElements, notes
 
-### Speaker Notes (NEW)
+### Speaker Notes
 - Per-slide notes in collapsible panel (bottom of Property Panel)
 - Word count + estimated speaking time (130 wpm)
 - Debounced updates (400ms)
 - Notes overlay in presentation mode (S key to toggle)
-- Amber-themed overlay with scrollable content
 - Notes preserved in autosave and JSON export
 
 ### Presentation Mode
@@ -111,15 +118,14 @@ All v1-v7 features remain working. This session added 3 major features and expan
 - Auto-play mode (5s/slide) with progress bar
 - Elapsed timer / stopwatch
 - Auto-hiding controls
-- **Speaker notes overlay (S key) (NEW)**
-- **Master elements rendered (NEW)**
+- Speaker notes overlay (S key)
+- Master elements rendered
 - Fullscreen toggle (F key)
 - Progress bar, transition selector, click zones
 
 ### Styling
 - Fill (solid/gradient), Stroke, Corner radius, Shadow, Opacity, Rotation
 - Per-slide background (solid/gradient/image)
-- Per-slide transition override (via store action, UI not yet exposed)
 
 ### UI
 - Dark mode toggle — sun/moon icons, persists via next-themes
@@ -140,7 +146,7 @@ All v1-v7 features remain working. This session added 3 major features and expan
 
 ### Keyboard Shortcuts (48+)
 - T, Ctrl+Z/Y/C/V/D/A/S/G/H/F, F5, arrows, Shift+corner, Shift+rotate, Ctrl+Shift+L/E/R/T/M/B, ?, Esc, right-click
-- Presentation: →/Space/PgDn, ←/PgUp, Home/End, F, P, **S (NEW)**, T, Esc
+- Presentation: →/Space/PgDn, ←/PgUp, Home/End, F, P, S, T, Esc
 - Master: Right-click → Promote/Demote, Status bar crown toggle
 
 ---
@@ -149,21 +155,23 @@ All v1-v7 features remain working. This session added 3 major features and expan
 - Rotated element resize doesn't account for rotation matrix (resize math correct at rotation=0).
 - Smart HTML import works best with absolutely-positioned elements.
 - PDF export opens new window (popup blockers may block).
-- PNG export uses foreignObject SVG — may not render perfectly in all browsers; cross-origin images without CORS headers will fail (handled gracefully).
+- PNG export uses foreignObject SVG — may not render perfectly in all browsers.
 - EyeDropper API only in Chrome/Edge.
-- HTML5 drag-to-reorder for slide thumbnails may not work in all headless/automated browsers.
-- Clipboard API may be blocked in some browsers/contexts — Copy HTML has execCommand fallback.
-- Master elements cannot be edited directly on slides (must demote first). This is by design but may confuse users — consider adding a "master editor" mode.
-- Per-slide transition override is in the store but not yet exposed in the UI (only global transition in presentation mode).
+- HTML5 drag-to-reorder for slide thumbnails may not work in all headless browsers.
+- Clipboard API may be blocked in some browsers — Copy HTML has execCommand fallback.
+- Master elements cannot be edited directly on slides (must demote first).
+- Per-slide transition override is in the store but not yet exposed in the UI.
+- Folder upload uses `webkitdirectory` which is non-standard but widely supported (Chrome, Firefox, Edge, Safari).
+- Inline CSS in imported HTML is preserved, but external stylesheets (`<link>` tags) are not loaded — only inline styles are parsed.
 
 ## Priority Recommendations for Next Phase
-1. **Feature**: Master slide editor mode — a dedicated view for editing master elements with full selection/resize.
-2. **Feature**: Per-slide transition UI — expose the `setSlideTransition` action in the slide context menu or property panel.
-3. **Feature**: Snap to other elements' edges during resize (currently only snaps canvas center/edges).
+1. **Feature**: Master slide editor mode — a dedicated view for editing master elements.
+2. **Feature**: Per-slide transition UI — expose the `setSlideTransition` action.
+3. **Feature**: Snap to other elements' edges during resize.
 4. **Performance**: Virtualized layer list for 100+ elements.
-5. **Feature**: Keyboard-navigable layer panel (arrow keys to move focus, Enter to select).
+5. **Feature**: Keyboard-navigable layer panel (arrow keys, Enter).
 6. **Feature**: Custom font upload (FontFace API).
 7. **Feature**: Slide thumbnail live preview (real-time mini render updates).
-8. **Feature**: Alignment guides persistence (remember snap settings per project).
+8. **Feature**: External CSS stylesheet support in HTML import (resolve `<link>` tags).
 9. **Feature**: Export to individual PNG per slide (batch export).
 10. **Polish**: Animated transition between slides in the thumbnail panel.

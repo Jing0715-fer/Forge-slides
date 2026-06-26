@@ -39,6 +39,72 @@ export function parseHtmlToSlides(html: string): Slide[] {
   return sections.map((section, idx) => parseSlideSection(section, idx))
 }
 
+/**
+ * A parsed HTML file from file/folder upload.
+ * Each file becomes one or more slides (depending on its content).
+ */
+export interface ParsedFile {
+  /** Display name (without extension) */
+  name: string
+  /** Original filename including extension */
+  filename: string
+  /** Raw HTML content */
+  content: string
+  /** File size in bytes */
+  size: number
+}
+
+/**
+ * Parse multiple HTML files (from file or folder upload) into slides.
+ *
+ * Strategy per file:
+ *  - If the file contains multiple <section class="slide"> elements, each becomes a slide
+ *  - If the file has no slide sections, the body becomes one slide
+ *  - File name is used as the slide name prefix
+ *
+ * All slides from all files are concatenated in order (files should be pre-sorted by the caller).
+ */
+export function parseMultipleHtmlToSlides(files: ParsedFile[]): Slide[] {
+  if (typeof window === "undefined") return []
+  const allSlides: Slide[] = []
+  let slideIndex = 0
+
+  for (const file of files) {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(file.content, "text/html")
+
+    // Find slide sections within this file
+    let sections: Element[] = Array.from(
+      doc.querySelectorAll("section.slide, section[data-slide], .slide"),
+    )
+
+    // If there are no slide sections, treat the body as a single slide
+    if (sections.length === 0) {
+      const body = doc.body
+      if (body.children.length > 0) {
+        sections = [body]
+      } else {
+        // Empty file — skip
+        continue
+      }
+    }
+
+    for (const section of sections) {
+      const slide = parseSlideSection(section, slideIndex)
+      // Use the file name as the slide name (with index if file has multiple slides)
+      if (sections.length === 1) {
+        slide.name = file.name
+      } else {
+        slide.name = `${file.name} (${slideIndex + 1})`
+      }
+      allSlides.push(slide)
+      slideIndex++
+    }
+  }
+
+  return allSlides
+}
+
 function parseSlideSection(section: Element, index: number): Slide {
   // Render the section off-screen to compute layout & computed styles
   const container = document.createElement("div")
