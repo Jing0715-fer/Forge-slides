@@ -3,7 +3,6 @@
 import React, { useState } from "react"
 import { useEditor, type HistoryEntry } from "@/store/editor-store"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   History, Undo2, Redo2, Trash2, ChevronDown, ChevronRight,
@@ -47,28 +46,31 @@ export function HistoryPanel() {
   const futureEntries = future // closest future first
 
   return (
-    <div className="border-t bg-background">
+    <div className="border-t-2 border-primary/10 bg-gradient-to-b from-muted/30 to-background shrink-0">
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-1.5 px-3 py-2 hover:bg-muted/50 transition-colors text-left group"
+        className="w-full flex items-center gap-1.5 px-3 py-2.5 hover:bg-muted/50 transition-colors text-left group"
       >
         {expanded ? (
           <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
         ) : (
           <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
         )}
-        <History className="w-3.5 h-3.5 text-primary" />
-        <span className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
+        <div className="w-5 h-5 rounded bg-primary/10 flex items-center justify-center">
+          <History className="w-3 h-3 text-primary" />
+        </div>
+        <span className="text-xs font-semibold uppercase text-foreground/90 tracking-wider">
           History
         </span>
-        {totalCount > 0 && (
-          <span className="ml-auto text-[10px] text-muted-foreground/70 font-mono">
-            {totalCount} action{totalCount === 1 ? "" : "s"}
-          </span>
-        )}
-        {expanded && (canUndo || canRedo) && (
-          <div className="ml-auto flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+        <div className="ml-auto flex items-center gap-1.5">
+          {totalCount > 0 && (
+            <span className="text-[10px] text-primary/80 font-mono bg-primary/10 px-1.5 py-0.5 rounded-full">
+              {totalCount}
+            </span>
+          )}
+          {expanded && (canUndo || canRedo) && (
+            <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -115,12 +117,13 @@ export function HistoryPanel() {
               )}
             </TooltipProvider>
           </div>
-        )}
+          )}
+        </div>
       </button>
 
       {/* Timeline */}
       {expanded && (
-        <div className="px-2 pb-2">
+        <div className="px-2 pb-2 max-h-56 overflow-y-auto editor-scroll">
           {totalCount === 0 ? (
             <div className="text-center py-6 px-2">
               <Clock className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
@@ -129,8 +132,7 @@ export function HistoryPanel() {
               </p>
             </div>
           ) : (
-            <ScrollArea className="h-auto max-h-64">
-              <div className="space-y-0.5">
+            <div className="space-y-0.5">
                 {/* Future entries (redo-able) — shown above current state */}
                 {futureEntries.map((entry, idx) => {
                   const Icon = getIcon(entry.icon)
@@ -172,7 +174,6 @@ export function HistoryPanel() {
                   )
                 })}
               </div>
-            </ScrollArea>
           )}
         </div>
       )}

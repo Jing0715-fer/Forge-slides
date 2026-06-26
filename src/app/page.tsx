@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { LandingPage } from "@/components/editor/LandingPage"
 import { loadFromLocalStorage } from "@/lib/persistence"
@@ -22,14 +22,22 @@ type View = "landing" | "editor"
 
 export default function Home() {
   const [view, setView] = useState<View>("landing")
-  // Check for saved session using lazy initializer (runs once on mount, no effect needed)
-  const [hasSavedSession] = useState(() => {
-    if (typeof window === "undefined") return false
-    const saved = loadFromLocalStorage()
-    return !!(saved && saved.slides.length > 0)
-  })
+  // Always start with false on both server and client to avoid hydration mismatch.
+  // Update after mount via effect (allowed because it reads an external system — localStorage).
+  const [hasSavedSession, setHasSavedSession] = useState(false)
   const [pendingImport, setPendingImport] = useState(false)
   const { loadProject } = useEditor()
+
+  useEffect(() => {
+    // Read localStorage after mount to avoid SSR/client mismatch.
+    // This subscribes to an external system (browser storage) and updates state
+    // when the external data is available — a valid use of setState in an effect.
+    const saved = loadFromLocalStorage()
+    if (saved && saved.slides.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHasSavedSession(true)
+    }
+  }, [])
 
   const handleStart = useCallback(() => {
     setView("editor")
