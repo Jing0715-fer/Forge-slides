@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { useAutosave } from "@/hooks/use-autosave"
 import { exportSlidesToPrintableHtml } from "@/lib/pdf-export"
+import { exportSlideAsPng, downloadDataUrl } from "@/lib/png-export"
 import { Clock, RotateCcw, X } from "lucide-react"
 
 export function Editor() {
@@ -50,6 +51,19 @@ export function Editor() {
     win.document.write(html)
     win.document.close()
   }, [slides])
+
+  // PNG export — current slide only
+  const handlePngExport = useCallback(async () => {
+    const slide = currentSlide()
+    const toastId = toast.loading("Generating PNG…")
+    try {
+      const dataUrl = await exportSlideAsPng(slide, 2)
+      downloadDataUrl(dataUrl, `${slide.name.replace(/\s+/g, "-").toLowerCase()}.png`)
+      toast.success("PNG downloaded", { id: toastId })
+    } catch (e) {
+      toast.error("PNG export failed: " + (e as Error).message, { id: toastId })
+    }
+  }, [currentSlide])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -224,6 +238,7 @@ export function Editor() {
         onPdfExport={handlePdfExport}
         onShowShortcuts={() => setShortcutsOpen(true)}
         onFindReplace={() => setFindReplaceOpen(true)}
+        onPngExport={handlePngExport}
       />
       {restoreData && (
         <div className="bg-primary/10 border-b border-primary/20 px-4 py-2 flex items-center gap-3 text-sm">

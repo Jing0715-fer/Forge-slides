@@ -2,142 +2,120 @@
 
 ## Project Status
 
-**Phase**: v4 — Find & Replace, slide templates, color swatch palette all implemented and verified.
-**Last Updated**: 2026-06-26 17:45 (Asia/Shanghai)
+**Phase**: v5 — PNG export, gradient picker, visual polish animations all implemented and verified.
+**Last Updated**: 2026-06-26 18:00 (Asia/Shanghai)
 
 SlideForge is a PowerPoint-like HTML editor for fine-tuning AI-generated slides.
 The app runs on Next.js 16 at `http://localhost:3000/` (single route `/`).
 
 ---
 
-## Current State (v4)
+## Current State (v5)
 
-All v1 + v2 + v3 features remain working. This session added 3 major features and fixed a lint error from v3.
+All v1-v4 features remain working. This session added 3 major features.
 
-### Verified This Session (agent-browser + VLM, 2026-06-26 17:45)
-- **Find & Replace (Ctrl+H / Ctrl+F)**: Dialog with find/replace inputs, case-sensitive toggle, whole-word toggle, live results list with context highlighting, prev/next navigation, replace current, replace all. Verified: searched "Welcome" → found 1 match in title element; replaced with "Hello" → title changed to "Hello to SlideForge". Results show element name, slide name, and match context with yellow highlight.
-- **Slide Templates**: Template picker dialog with 7 templates (Blank, Title Slide, Title+Content, Two Column, Three Cards, Section Divider, Quote, Dark Gradient). Each has a visual thumbnail preview. Verified: picked "Three Cards" → new slide created with 10 elements (title + 3 cards + 3 titles + 3 bodies), all rendering correctly with indigo/cyan/amber colors. Slides panel now has separate "Template" and "Blank" buttons.
-- **Color Swatch Palette**: Reusable ColorSwatchPicker component with popover containing: native color input, hex text input, transparent toggle, recent colors (8 slots, persisted to localStorage), full palette of 88 preset colors (grays, reds, oranges, ambers, yellows, greens, teals, cyans, blues, indigos, violets, purples, fuchsias, pinks, roses), and EyeDropper API support (Chrome/Edge). Verified: popover opens with Recent and Palette sections, 88 swatches rendered. Integrated into PropertyPanel's ColorField for all color properties (fill, stroke, text color, shadow color, slide background).
-- **Shortcuts dialog updated**: Added Ctrl+H / Ctrl+F (Find & Replace) to General section.
-
-### Bug Fixes This Session
-- Fixed lint error in FindReplaceDialog.tsx (`react-hooks/preserve-manual-memoization`) by converting useCallback-wrapped `replaceAll` and `goToMatch` to plain functions.
-- Fixed lint error in use-recent-colors.ts (`react-hooks/set-state-in-effect`) by using useState lazy initializer instead of useEffect+setState.
-- Wired up FindReplaceDialog (was created in v3 but never connected to Editor/Toolbar/keyboard).
+### Verified This Session (agent-browser + VLM, 2026-06-26 18:00)
+- **PNG Export**: New PNG button in toolbar. Exports current slide as a 2x resolution PNG using SVG foreignObject + canvas technique. Handles image CORS by pre-converting image URLs to data URLs. Verified: download was triggered (MutationObserver confirmed `<a download>` element created). Toast notifications show loading/success/error states.
+- **Gradient Picker**: New GradientPicker component with popover. Features: linear/radial type selector, angle slider (0-360°, 15° steps), color stops with position sliders (add/remove stops, min 2), 12 gradient presets (Sunset, Ocean, Forest, Purple, Fire, Mint, Berry, Steel, Peach, Sky, Rose, Dark), live preview bar, hex input. Integrated into Fill color field and slide background. Verified: clicked "Purple" preset on Card A → card fill changed to `linear-gradient(135deg, rgb(99, 102, 241), rgb(139, 92, 246))`.
+- **Visual Polish**: Added CSS animations and hover effects throughout:
+  - Slide thumbnails: hover lift + shadow, active state with primary ring
+  - Layer rows: hover translateX
+  - Color swatches: hover scale + shadow
+  - Template cards: hover lift + shadow
+  - Resize handles: hover scale (already existed)
+  - Group selection: pulsing dashed outline animation
+  - Drop zone overlay: pulsing opacity animation
+  - Toolbar buttons: active press scale
 
 ---
 
 ## Architecture
 - **State**: Zustand store at `src/store/editor-store.ts`.
-- **Types**: `src/types/editor.ts` — text, rect, ellipse, triangle, line, image, container + groupId + backgroundImage.
-- **Templates**: `src/lib/templates.ts` — 7 slide templates with build functions.
-- **Alignment**: `src/lib/alignment.ts` — PPT-style smart snapping.
-- **HTML I/O**: `src/lib/html-io.ts` — gradient/shape/shadow-aware parser.
-- **PDF export**: `src/lib/pdf-export.ts` — print-ready HTML.
-- **Persistence**: `src/lib/persistence.ts` — localStorage autosave.
-- **Recent colors**: `src/hooks/use-recent-colors.ts` — 16 recent + 88 preset palette, persisted.
-- **Autosave hook**: `src/hooks/use-autosave.ts` — debounced save + restore banner.
-- **Components**: `src/components/editor/` — Editor, Toolbar (2-row), AlignmentToolbar, TextStylePresets, Canvas (with drag-drop), CanvasElement (group move + aspect lock), LayersPanel, SlidesPanel (Template + Blank buttons), PropertyPanel (with ColorSwatchPicker), ImportHtmlDialog, ExportDialog, KeyboardShortcutsDialog (5 categories), FindReplaceDialog, TemplatePickerDialog, CanvasContextMenu, ColorSwatchPicker.
+- **Types**: `src/types/editor.ts`.
+- **Templates**: `src/lib/templates.ts` — 7 slide templates.
+- **PNG export**: `src/lib/png-export.ts` — SVG foreignObject + canvas with CORS image handling.
+- **Alignment**: `src/lib/alignment.ts`.
+- **HTML I/O**: `src/lib/html-io.ts`.
+- **PDF export**: `src/lib/pdf-export.ts`.
+- **Persistence**: `src/lib/persistence.ts` + `src/hooks/use-autosave.ts`.
+- **Recent colors**: `src/hooks/use-recent-colors.ts`.
+- **Components**: Editor, Toolbar (2-row), AlignmentToolbar, TextStylePresets, Canvas (drag-drop), CanvasElement (group move + aspect lock), LayersPanel, SlidesPanel (Template + Blank), PropertyPanel (ColorSwatchPicker + GradientPicker), ImportHtmlDialog, ExportDialog, KeyboardShortcutsDialog, FindReplaceDialog, TemplatePickerDialog, CanvasContextMenu, ColorSwatchPicker, GradientPicker.
 
 ---
 
-## All Features (v1 + v2 + v3 + v4)
+## All Features (v1 + v2 + v3 + v4 + v5)
 
 ### Editing
-- PPT-like drag with smart alignment guides (6px threshold)
-- 8-handle resize with edge snapping
-- Shift+corner resize = lock aspect ratio
+- PPT-like drag with smart alignment guides
+- 8-handle resize with edge snapping + Shift aspect lock
 - Rotation handle (Shift = 15° snap)
-- Double-click text to edit in place
-- Marquee (box) selection
-- Shift+click for multi-select
+- Double-click text edit, marquee selection, multi-select
 - Right-click context menu
 
 ### Elements
 - Text (full typography + 8 style presets)
 - Rectangle, Ellipse, Triangle, Line
-- Image (upload from file, URL, OR drag-drop onto canvas)
+- Image (file upload, URL, drag-drop)
 - Container (raw HTML)
 
 ### Grouping
-- Ctrl+G to group, Ctrl+Shift+G to ungroup
-- Grouped elements move together
-- Dashed blue selection ring for groups
+- Ctrl+G / Ctrl+Shift+G, group move, dashed ring
 
 ### Multi-Selection
 - Align L/C/R/T/M/B, Distribute H/V, Match W/H
-- Ctrl+Shift+L/E/R/T/M/B alignment shortcuts
 
-### Find & Replace (NEW)
-- Ctrl+H or Ctrl+F to open dialog
-- Case-sensitive and whole-word toggles
-- Live results with context highlighting
-- Previous/Next navigation
-- Replace current or Replace all
+### Find & Replace
+- Ctrl+H/Ctrl+F, case-sensitive, whole-word, replace all
 
-### Slide Templates (NEW)
-- 7 templates: Blank, Title Slide, Title+Content, Two Column, Three Cards, Section Divider, Quote, Dark Gradient
-- Visual thumbnail previews in picker
-- Separate Template and Blank buttons in slides panel
+### Slide Templates
+- 7 templates with visual thumbnails
 
-### Color System (NEW)
-- ColorSwatchPicker with popover
-- Recent colors (persisted, 16 slots)
-- 88-color preset palette (15 color families)
-- EyeDropper API support (Chrome/Edge)
-- Transparent toggle for fill/stroke
+### Color System
+- ColorSwatchPicker: 88 preset + 16 recent colors, EyeDropper
+- **GradientPicker**: linear/radial, angle, color stops, 12 presets (NEW)
 
-### Styling
-- Fill, Stroke, Corner radius, Shadow, Opacity, Rotation
-- Per-slide background color/gradient + background image
-
-### Slides
-- Multi-slide with live thumbnail previews
-- Add/Duplicate/Delete slides
-- New from template or blank
-
-### Layers
-- Searchable layer list, Lock/Visibility, Bring forward/backward
-
-### History
-- Undo/Redo (50-step buffer)
-
-### Import / Export
-- HTML Import (smart parse + raw container)
+### Export
 - HTML Export (copy/download)
 - PDF Export (print-ready)
+- **PNG Export** (2x resolution, CORS-safe) (NEW)
+
+### Styling
+- Fill (solid/gradient), Stroke, Corner radius, Shadow, Opacity, Rotation
+- Per-slide background (solid/gradient/image)
+
+### Slides
+- Multi-slide, add/duplicate/delete, templates
+
+### Layers
+- Searchable, lock/visibility, reorder
+
+### History
+- Undo/Redo (50-step)
 
 ### Persistence
-- Autosave to localStorage (1.5s debounce)
-- Restore session banner on reload
+- Autosave (1.5s debounce), restore banner
 
 ### Keyboard Shortcuts (35+)
-- `T` add text · `Ctrl+Z/Y` undo/redo · `Ctrl+C/V/D` copy/paste/duplicate · `Del` delete · `Ctrl+A` select all · `Ctrl+S` save
-- `Ctrl+G` group · `Ctrl+Shift+G` ungroup
-- `Ctrl+H` / `Ctrl+F` find & replace (NEW)
-- Arrow keys nudge 1px (Shift = 10px) · Alt+Arrow resizes
-- Shift+corner = aspect lock · Shift+rotate = 15° snap
-- `Ctrl+Shift+L/E/R/T/M/B` align
-- `?` shortcuts dialog · `Esc` cancel · Right-click = context menu
+- T, Ctrl+Z/Y/C/V/D/A/S/G/H/F, arrows, Shift+corner, Shift+rotate, Ctrl+Shift+L/E/R/T/M/B, ?, Esc, right-click
 
 ---
 
 ## Unresolved Issues / Risks
-- Resize math is correct at rotation=0; resizing rotated elements doesn't account for rotation matrix.
+- Resize math correct at rotation=0; rotated element resize doesn't account for rotation matrix.
 - Smart HTML import works best with absolutely-positioned elements.
-- PDF export opens a new window — popup blockers may interfere.
-- Autosave stores image data URLs — large images could exceed localStorage quota.
-- Group resize moves only the dragged element (not the whole group).
-- EyeDropper API only works in Chrome/Edge (button hidden in other browsers).
+- PDF export opens new window (popup blockers).
+- PNG export uses foreignObject SVG — may not render perfectly in all browsers; cross-origin images without CORS headers will fail (handled gracefully with error toast).
+- Group resize moves only dragged element.
+- EyeDropper API only in Chrome/Edge.
 
 ## Priority Recommendations for Next Phase
-1. **Feature**: Export individual slide as PNG (via html-to-image or canvas snapshot).
-2. **Feature**: Group resize — when resizing one element in a group, all group members scale proportionally.
-3. **Feature**: Master slide / template system (define a master, apply to new slides).
-4. **Polish**: Snap to other elements' edges during resize (currently snaps to centers and canvas edges).
-5. **Feature**: Slide transitions / animations preview.
-6. **Performance**: Virtualized layer list for 100+ elements.
+1. **Feature**: Group resize — all group members scale proportionally.
+2. **Feature**: Master slide / template system.
+3. **Polish**: Snap to other elements' edges during resize.
+4. **Feature**: Slide transitions / animations preview.
+5. **Performance**: Virtualized layer list for 100+ elements.
+6. **Feature**: Keyboard-navigable layer panel.
 7. **Polish**: Multi-select bounding box with group resize handles.
-8. **Feature**: Keyboard-navigable layer panel (arrow up/down to select layers).
-9. **Feature**: Gradient picker for fill (currently only solid colors via swatch).
-10. **Polish**: Animation when opening dialogs (slide-in, fade).
+8. **Feature**: Dark mode toggle for the editor UI.
+9. **Feature**: Custom font upload.
+10. **Polish**: Right-click context menu on slide thumbnails (duplicate/delete here).

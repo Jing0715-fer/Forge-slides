@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Type, Square, Circle, Triangle, Minus, Image as ImageIcon, Upload,
   Undo2, Redo2, Copy, Trash2, BringToFront, SendToBack,
-  ZoomIn, ZoomOut, Grid3x3, Magnet, Download, FileText, HelpCircle, Search,
+  ZoomIn, ZoomOut, Grid3x3, Magnet, Download, FileText, HelpCircle, Search, ImageDown,
 } from "lucide-react"
 import { AlignmentToolbar } from "./AlignmentToolbar"
 import { TextStylePresets } from "./TextStylePresets"
@@ -19,9 +19,10 @@ interface Props {
   onPdfExport: () => void
   onShowShortcuts: () => void
   onFindReplace: () => void
+  onPngExport: () => void
 }
 
-export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShortcuts, onFindReplace }: Props) {
+export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShortcuts, onFindReplace, onPngExport }: Props) {
   const {
     addElement, selectedIds, removeElements, duplicateElements,
     bringToFront, sendToBack, undo, redo, past, future,
@@ -187,6 +188,9 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
             </Button>
             <Button variant="outline" size="sm" onClick={onPdfExport} className="gap-1.5 h-8">
               <FileText className="w-3.5 h-3.5" /> PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={onPngExport} className="gap-1.5 h-8">
+              <ImageDown className="w-3.5 h-3.5" /> PNG
             </Button>
             <Button size="sm" onClick={handleExport} className="gap-1.5 h-8">
               <FileText className="w-3.5 h-3.5" /> Download

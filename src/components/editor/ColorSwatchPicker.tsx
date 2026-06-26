@@ -107,7 +107,7 @@ export function ColorSwatchPicker({ value, onChange, allowTransparent, label, cl
                     key={i}
                     type="button"
                     onClick={() => handleSelect(c)}
-                    className="w-6 h-6 rounded border border-border hover:scale-110 transition-transform"
+                    className="color-swatch w-6 h-6 rounded border border-border"
                     style={{ background: c }}
                     title={c}
                   />
@@ -125,7 +125,7 @@ export function ColorSwatchPicker({ value, onChange, allowTransparent, label, cl
                   key={i}
                   type="button"
                   onClick={() => handleSelect(c)}
-                  className="w-5 h-5 rounded border border-border hover:scale-110 transition-transform"
+                  className="color-swatch w-5 h-5 rounded border border-border"
                   style={{ background: c }}
                   title={c}
                 />

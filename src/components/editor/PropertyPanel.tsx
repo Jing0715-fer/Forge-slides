@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Toggle } from "@/components/ui/toggle"
 import { ColorSwatchPicker } from "./ColorSwatchPicker"
+import { GradientPicker } from "./GradientPicker"
 import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -41,22 +42,12 @@ function EmptyPanel() {
       <div className="p-4 border-b">
         <h3 className="text-sm font-semibold mb-3">Slide Properties</h3>
         <div className="space-y-3">
-          <div>
-            <Label className="text-xs">Background</Label>
-            <div className="flex gap-2 mt-1">
-              <input
-                type="color"
-                value={normalizeColor(slide.background)}
-                onChange={(e) => setSlideBackground(slide.id, e.target.value)}
-                className="w-9 h-9 rounded border cursor-pointer"
-              />
-              <Input
-                value={slide.background}
-                onChange={(e) => setSlideBackground(slide.id, e.target.value)}
-                className="h-9"
-              />
-            </div>
-          </div>
+          <ColorField
+            label="Background"
+            value={slide.background}
+            onChange={(c) => setSlideBackground(slide.id, c)}
+            allowGradient
+          />
         </div>
       </div>
       <div className="p-4 text-sm text-muted-foreground">
@@ -166,6 +157,7 @@ function SingleElementPanel({
             value={element.fill || "transparent"}
             onChange={(c) => set("fill", c)}
             allowTransparent
+            allowGradient
           />
           <ColorField
             label="Stroke"
@@ -446,12 +438,14 @@ function ColorField({
   value,
   onChange,
   allowTransparent,
+  allowGradient,
 }: {
   label: string
   value: string
   onChange: (c: string) => void
   allowTransparent?: boolean
   allowAlpha?: boolean
+  allowGradient?: boolean
 }) {
   return (
     <div className="mt-2">
@@ -462,6 +456,9 @@ function ColorField({
           onChange={onChange}
           allowTransparent={allowTransparent}
         />
+        {allowGradient && (
+          <GradientPicker value={value} onChange={onChange} />
+        )}
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}

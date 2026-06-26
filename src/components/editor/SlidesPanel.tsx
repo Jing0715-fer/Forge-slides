@@ -59,8 +59,8 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
               key={slide.id}
               onClick={() => setCurrentSlide(slide.id)}
               className={cn(
-                "group relative w-32 h-[72px] rounded border-2 cursor-pointer shrink-0 overflow-hidden",
-                currentSlideId === slide.id ? "border-primary" : "border-border hover:border-muted-foreground/40",
+                "slide-thumb group relative w-32 h-[72px] rounded border-2 cursor-pointer shrink-0 overflow-hidden",
+                currentSlideId === slide.id ? "border-primary active" : "border-border hover:border-muted-foreground/40",
               )}
               style={{ background: slide.background }}
             >

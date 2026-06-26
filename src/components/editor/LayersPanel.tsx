@@ -79,7 +79,7 @@ function LayerRow({
     <div
       onClick={onSelect}
       className={cn(
-        "group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-xs",
+        "layer-row group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-xs",
         selected ? "bg-primary/10 ring-1 ring-primary/30" : "hover:bg-muted",
       )}
     >

@@ -51,7 +51,7 @@ export function TemplatePickerDialog({ open, onOpenChange }: Props) {
               <button
                 key={tpl.id}
                 onClick={() => handlePick(tpl.id)}
-                className="group text-left rounded-lg border-2 border-border hover:border-primary transition-all overflow-hidden bg-card hover:shadow-lg"
+                className="template-card group text-left rounded-lg border-2 border-border hover:border-primary overflow-hidden bg-card"
               >
                 {/* Thumbnail */}
                 <div
