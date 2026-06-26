@@ -1,31 +1,61 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
-import { useEditor, createTextElement, createShapeElement, createImageElement, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/store/editor-store"
+import React, { useEffect, useState, useCallback } from "react"
+import { useEditor, createTextElement, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/store/editor-store"
 import { Toolbar } from "./Toolbar"
 import { Canvas } from "./Canvas"
 import { PropertyPanel } from "./PropertyPanel"
 import { LayersPanel } from "./LayersPanel"
 import { SlidesPanel } from "./SlidesPanel"
 import { ImportHtmlDialog, ExportDialog } from "./ImportHtmlDialog"
+import { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog"
+import { CanvasContextMenu } from "./CanvasContextMenu"
 import { Toaster } from "@/components/ui/sonner"
+import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
+import { useAutosave } from "@/hooks/use-autosave"
+import { exportSlidesToPrintableHtml } from "@/lib/pdf-export"
+import { Clock, RotateCcw, X } from "lucide-react"
 
 export function Editor() {
   const [importOpen, setImportOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const {
     selectedIds, removeElements, duplicateElements, copy, paste,
-    undo, redo, updateElement, updateElements, currentSlide,
+    undo, redo, updateElements, currentSlide, slides, alignElements,
+    distributeElements, matchSize, groupElements, ungroupElements,
   } = useEditor()
+
+  const { lastSaved, pending, restoreData, acceptRestore, dismissRestore } = useAutosave()
+
+  // Save shortcut
+  const handleSave = useCallback(() => {
+    // Autosave runs automatically; this just confirms to the user
+    toast.success("Saved to browser storage")
+  }, [])
+
+  // PDF export
+  const handlePdfExport = useCallback(() => {
+    const html = exportSlidesToPrintableHtml(slides)
+    const win = window.open("", "_blank")
+    if (!win) {
+      toast.error("Popup blocked. Please allow popups to export PDF.")
+      return
+    }
+    win.document.write(html)
+    win.document.close()
+  }, [slides])
 
   // Keyboard shortcuts
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      // Skip if editing text
       const editing = useEditor.getState().editingId
       const target = e.target as HTMLElement
-      const isTyping = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable
+      const isTyping =
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
       if (editing || isTyping) {
         if (e.key === "Escape" && editing) {
           useEditor.getState().setEditing(null)
@@ -34,6 +64,9 @@ export function Editor() {
       }
       const meta = e.ctrlKey || e.metaKey
       const slide = useEditor.getState().currentSlide()
+
+      // Save
+      if (meta && e.key === "s") { e.preventDefault(); handleSave(); return }
 
       // Undo / Redo
       if (meta && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); return }
@@ -68,6 +101,41 @@ export function Editor() {
         return
       }
 
+      // Group / Ungroup
+      if (meta && e.key === "g" && !e.shiftKey && selectedIds.length >= 2) {
+        e.preventDefault()
+        groupElements(selectedIds)
+        toast.success(`Grouped ${selectedIds.length} elements`)
+        return
+      }
+      if (meta && e.shiftKey && e.key === "G" && selectedIds.length > 0) {
+        e.preventDefault()
+        ungroupElements(selectedIds)
+        toast.success("Ungrouped")
+        return
+      }
+
+      // Shortcuts dialog
+      if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+        e.preventDefault()
+        setShortcutsOpen(true)
+        return
+      }
+
+      // Alignment shortcuts (multi-select)
+      if (meta && selectedIds.length >= 2) {
+        const alignMap: Record<string, Parameters<typeof alignElements>[1]> = {
+          l: "left", e: "centerH", r: "right",
+          t: "top", m: "middle", b: "bottom",
+        }
+        // Ctrl+Shift+L/R/E for horizontal; Ctrl+Shift+T/M/B for vertical
+        if (e.shiftKey && alignMap[e.key.toLowerCase()]) {
+          e.preventDefault()
+          alignElements(selectedIds, alignMap[e.key.toLowerCase()])
+          return
+        }
+      }
+
       // Arrow nudge
       if (selectedIds.length > 0 && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
         e.preventDefault()
@@ -82,14 +150,14 @@ export function Editor() {
         return
       }
 
-      // Size nudge with Shift+Arrow
-      if (selectedIds.length > 0 && (e.altKey)) {
+      // Size nudge with Alt
+      if (selectedIds.length > 0 && e.altKey) {
         if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
           e.preventDefault()
           const step = e.shiftKey ? 10 : 1
           const updates = selectedIds.map((id) => {
             const el = slide.elements.find((x) => x.id === id)!
-            const patch: any = {}
+            const patch: Record<string, number> = {}
             if (e.key === "ArrowLeft") patch.width = Math.max(8, el.width - step)
             if (e.key === "ArrowRight") patch.width = Math.max(8, el.width + step)
             if (e.key === "ArrowUp") patch.height = Math.max(8, el.height - step)
@@ -103,7 +171,11 @@ export function Editor() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [selectedIds, removeElements, duplicateElements, copy, paste, undo, redo, updateElement, updateElements])
+  }, [selectedIds, removeElements, duplicateElements, copy, paste, undo, redo, updateElements, alignElements, distributeElements, matchSize, groupElements, ungroupElements, handleSave])
+
+  const lastSavedText = lastSaved
+    ? new Date(lastSaved).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : null
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-background">
@@ -111,13 +183,45 @@ export function Editor() {
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 rounded bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold">S</div>
           <span className="font-semibold text-sm">SlideForge</span>
-          <span className="text-xs text-muted-foreground">PowerPoint-like HTML editor</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">PowerPoint-like HTML editor</span>
         </div>
-        <div className="ml-auto text-xs text-muted-foreground hidden md:block">
-          Drag to move · Snap to align · Double-click text to edit
+        <div className="ml-auto flex items-center gap-3">
+          {pending ? (
+            <span className="text-xs text-amber-600 flex items-center gap-1">
+              <Clock className="w-3 h-3 animate-pulse" /> Saving…
+            </span>
+          ) : lastSavedText ? (
+            <span className="text-xs text-muted-foreground hidden md:inline">
+              Saved {lastSavedText}
+            </span>
+          ) : null}
+          <span className="text-xs text-muted-foreground hidden lg:block">
+            Drag · Snap · Double-click to edit
+          </span>
         </div>
       </header>
-      <Toolbar onImportClick={() => setImportOpen(true)} onExportClick={() => setExportOpen(true)} />
+      <Toolbar
+        onImportClick={() => setImportOpen(true)}
+        onExportClick={() => setExportOpen(true)}
+        onPdfExport={handlePdfExport}
+        onShowShortcuts={() => setShortcutsOpen(true)}
+      />
+      {restoreData && (
+        <div className="bg-primary/10 border-b border-primary/20 px-4 py-2 flex items-center gap-3 text-sm">
+          <RotateCcw className="w-4 h-4 text-primary" />
+          <span>
+            Found a saved session from{" "}
+            <strong>{new Date(restoreData.savedAt).toLocaleString()}</strong> with{" "}
+            {restoreData.slides.length} slide(s). Restore it?
+          </span>
+          <div className="ml-auto flex gap-2">
+            <Button size="sm" variant="default" onClick={acceptRestore}>Restore</Button>
+            <Button size="sm" variant="ghost" onClick={dismissRestore}>
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
       <div className="flex-1 flex min-h-0">
         <LayersPanel />
         <div className="flex-1 flex flex-col min-w-0">
@@ -128,6 +232,8 @@ export function Editor() {
       </div>
       <ImportHtmlDialog open={importOpen} onOpenChange={setImportOpen} />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} />
+      <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <CanvasContextMenu />
       <Toaster richColors position="bottom-right" />
     </div>
   )

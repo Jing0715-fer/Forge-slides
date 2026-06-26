@@ -20,6 +20,8 @@ export interface BaseElement {
   visible: boolean
   locked: boolean
   zIndex: number
+  // Group membership — elements with the same groupId move/resize together
+  groupId?: string
   // Background / fill
   fill?: string
   stroke?: string
@@ -80,6 +82,7 @@ export interface Slide {
   id: string
   name: string
   background: string
+  backgroundImage?: string | null
   elements: EditorElement[]
 }
 

@@ -341,6 +341,24 @@ interface EditorState {
   sendBackward: (id: string) => void
   bringToFront: (id: string) => void
   sendToBack: (id: string) => void
+  // alignment (multi-selection)
+  alignElements: (
+    ids: string[],
+    mode:
+      | "left"
+      | "centerH"
+      | "right"
+      | "top"
+      | "middle"
+      | "bottom",
+  ) => void
+  distributeElements: (ids: string[], axis: "horizontal" | "vertical") => void
+  matchSize: (ids: string[], dimension: "width" | "height" | "both") => void
+  // grouping
+  groupElements: (ids: string[]) => void
+  ungroupElements: (ids: string[]) => void
+  // slide background image
+  setSlideBackgroundImage: (id: string, src: string | null) => void
   // slides
   addSlide: () => void
   duplicateSlide: (id: string) => void
@@ -586,6 +604,181 @@ export const useEditor = create<EditorState>((set, get) => ({
         }
       })
       return { slides }
+    })
+  },
+
+  alignElements: (ids, mode) => {
+    set((s) => {
+      if (ids.length < 2) return s
+      const past = [...s.past, ...snapshot(s.slides)]
+      const slides = s.slides.map((slide) => {
+        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+        const targets = slide.elements.filter((e) => ids.includes(e.id))
+        if (targets.length < 2) return slide
+        // Compute reference bounds based on mode
+        const minLeft = Math.min(...targets.map((e) => e.x))
+        const maxRight = Math.max(...targets.map((e) => e.x + e.width))
+        const minTop = Math.min(...targets.map((e) => e.y))
+        const maxBottom = Math.max(...targets.map((e) => e.y + e.height))
+        const centerHX = (minLeft + maxRight) / 2
+        const centerHY = (minTop + maxBottom) / 2
+        const elements = slide.elements.map((el) => {
+          if (!ids.includes(el.id)) return el
+          let patch: Partial<EditorElement> = {}
+          switch (mode) {
+            case "left":
+              patch = { x: minLeft }
+              break
+            case "centerH":
+              patch = { x: centerHX - el.width / 2 }
+              break
+            case "right":
+              patch = { x: maxRight - el.width }
+              break
+            case "top":
+              patch = { y: minTop }
+              break
+            case "middle":
+              patch = { y: centerHY - el.height / 2 }
+              break
+            case "bottom":
+              patch = { y: maxBottom - el.height }
+              break
+          }
+          return { ...el, ...patch } as EditorElement
+        })
+        return { ...slide, elements }
+      })
+      return { slides, past: past.slice(-50), future: [] }
+    })
+  },
+
+  distributeElements: (ids, axis) => {
+    set((s) => {
+      if (ids.length < 3) return s
+      const past = [...s.past, ...snapshot(s.slides)]
+      const slides = s.slides.map((slide) => {
+        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+        let targets = slide.elements.filter((e) => ids.includes(e.id))
+        if (targets.length < 3) return slide
+        // Sort by position along axis
+        if (axis === "horizontal") {
+          targets = targets.slice().sort((a, b) => a.x - b.x)
+          const first = targets[0]
+          const last = targets[targets.length - 1]
+          const totalSpan = last.x + last.width - first.x
+          const totalSize = targets.reduce((sum, e) => sum + e.width, 0)
+          const gap = (totalSpan - totalSize) / (targets.length - 1)
+          let cursor = first.x
+          const updates = new Map<string, number>()
+          for (const t of targets) {
+            updates.set(t.id, cursor)
+            cursor += t.width + gap
+          }
+          return {
+            ...slide,
+            elements: slide.elements.map((el) =>
+              updates.has(el.id) ? { ...el, x: updates.get(el.id)! } : el,
+            ),
+          }
+        } else {
+          targets = targets.slice().sort((a, b) => a.y - b.y)
+          const first = targets[0]
+          const last = targets[targets.length - 1]
+          const totalSpan = last.y + last.height - first.y
+          const totalSize = targets.reduce((sum, e) => sum + e.height, 0)
+          const gap = (totalSpan - totalSize) / (targets.length - 1)
+          let cursor = first.y
+          const updates = new Map<string, number>()
+          for (const t of targets) {
+            updates.set(t.id, cursor)
+            cursor += t.height + gap
+          }
+          return {
+            ...slide,
+            elements: slide.elements.map((el) =>
+              updates.has(el.id) ? { ...el, y: updates.get(el.id)! } : el,
+            ),
+          }
+        }
+      })
+      return { slides, past: past.slice(-50), future: [] }
+    })
+  },
+
+  matchSize: (ids, dimension) => {
+    set((s) => {
+      if (ids.length < 2) return s
+      const past = [...s.past, ...snapshot(s.slides)]
+      const slides = s.slides.map((slide) => {
+        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+        const targets = slide.elements.filter((e) => ids.includes(e.id))
+        if (targets.length < 2) return slide
+        // Use first selected as reference
+        const ref = targets[0]
+        const elements = slide.elements.map((el) => {
+          if (!ids.includes(el.id)) return el
+          const patch: Partial<EditorElement> = {}
+          if (dimension === "width" || dimension === "both") patch.width = ref.width
+          if (dimension === "height" || dimension === "both") patch.height = ref.height
+          return { ...el, ...patch } as EditorElement
+        })
+        return { ...slide, elements }
+      })
+      return { slides, past: past.slice(-50), future: [] }
+    })
+  },
+
+  groupElements: (ids) => {
+    set((s) => {
+      if (ids.length < 2) return s
+      const past = [...s.past, ...snapshot(s.slides)]
+      const groupId = uuid()
+      const slides = s.slides.map((slide) => {
+        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+        return {
+          ...slide,
+          elements: slide.elements.map((el) =>
+            ids.includes(el.id) ? ({ ...el, groupId } as EditorElement) : el,
+          ),
+        }
+      })
+      return { slides, past: past.slice(-50), future: [] }
+    })
+  },
+
+  ungroupElements: (ids) => {
+    set((s) => {
+      const past = [...s.past, ...snapshot(s.slides)]
+      const slides = s.slides.map((slide) => {
+        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+        // Get the groupIds of the selected elements
+        const selectedGroups = new Set(
+          slide.elements
+            .filter((el) => ids.includes(el.id) && el.groupId)
+            .map((el) => el.groupId!),
+        )
+        if (selectedGroups.size === 0) return slide
+        return {
+          ...slide,
+          elements: slide.elements.map((el) =>
+            el.groupId && selectedGroups.has(el.groupId)
+              ? ({ ...el, groupId: undefined } as EditorElement)
+              : el,
+          ),
+        }
+      })
+      return { slides, past: past.slice(-50), future: [] }
+    })
+  },
+
+  setSlideBackgroundImage: (id, src) => {
+    set((s) => {
+      const past = [...s.past, ...snapshot(s.slides)]
+      const slides = s.slides.map((sl) =>
+        sl.id === id ? { ...sl, backgroundImage: src } : sl,
+      )
+      return { slides, past: past.slice(-50), future: [] }
     })
   },
 

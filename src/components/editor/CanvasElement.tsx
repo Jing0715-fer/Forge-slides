@@ -34,7 +34,7 @@ export function CanvasElementView({ element, selected, editing }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
   const [snapGuides, setSnapGuides] = useState<GuideLine[]>([])
-  const { setSelected, toggleSelected, updateElement, setEditing, currentSlide } = useEditor()
+  const { setSelected, toggleSelected, updateElement, updateElements, setEditing, currentSlide } = useEditor()
   const slide = currentSlide()
 
   // Helper to get canvas-space pointer position
@@ -155,7 +155,12 @@ export function CanvasElementView({ element, selected, editing }: Props) {
       else setSelected([element.id])
     }
     const { x: cx, y: cy } = getCanvasPos(e.clientX, e.clientY)
-    const slideEls = slide.elements.filter((el) => el.id !== element.id && el.visible)
+    // If the element is part of a group, collect all group siblings to move together
+    const groupSiblings = element.groupId
+      ? slide.elements.filter((el) => el.groupId === element.groupId)
+      : [element]
+    const groupIds = new Set(groupSiblings.map((el) => el.id))
+    const slideEls = slide.elements.filter((el) => !groupIds.has(el.id) && el.visible)
     const others: Box[] = slideEls.map((el) => ({ x: el.x, y: el.y, width: el.width, height: el.height }))
 
     // Push a snapshot to history so undo rolls back the whole drag
@@ -168,7 +173,7 @@ export function CanvasElementView({ element, selected, editing }: Props) {
       handle,
       startX: cx,
       startY: cy,
-      originals: [{ id: element.id, x: element.x, y: element.y, width: element.width, height: element.height, rotation: element.rotation }],
+      originals: groupSiblings.map((el) => ({ id: el.id, x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation })),
       others,
       snapshotted: true,
     }
@@ -189,11 +194,24 @@ export function CanvasElementView({ element, selected, editing }: Props) {
         newX += snap.dx
         newY += snap.dy
         setSnapGuides(snap.guides)
-        updateElement(element.id, { x: newX, y: newY })
+        // Move all grouped elements by the same delta
+        if (drag.originals.length > 1) {
+          const baseDx = newX - drag.originals[0].x
+          const baseDy = newY - drag.originals[0].y
+          updateElements(
+            drag.originals.map((o) => ({
+              id: o.id,
+              patch: { x: o.x + baseDx, y: o.y + baseDy },
+            })),
+          )
+        } else {
+          updateElement(element.id, { x: newX, y: newY })
+        }
       } else if (drag.mode === "resize") {
         const orig = drag.originals[0]
         let { x, y, width, height } = orig
         const handle = drag.handle!
+        const aspectRatio = orig.height > 0 ? orig.width / orig.height : 1
         if (handle.includes("e")) width = Math.max(8, orig.width + dx)
         if (handle.includes("s")) height = Math.max(8, orig.height + dy)
         if (handle.includes("w")) {
@@ -204,6 +222,18 @@ export function CanvasElementView({ element, selected, editing }: Props) {
           height = Math.max(8, orig.height - dy)
           y = orig.y + (orig.height - height)
         }
+        // Shift = lock aspect ratio (corner handles only)
+        if (ev.shiftKey && ["nw", "ne", "sw", "se"].includes(handle) && aspectRatio > 0) {
+          const newWFromH = height * aspectRatio
+          const newHFromW = width / aspectRatio
+          if (Math.abs(width - orig.width) > Math.abs(height - orig.height)) {
+            height = newHFromW
+            if (handle.includes("n")) y = orig.y + (orig.height - height)
+          } else {
+            width = newWFromH
+            if (handle.includes("w")) x = orig.x + (orig.width - width)
+          }
+        }
         const resized: Box = { x, y, width, height }
         const edges: ("left" | "right" | "top" | "bottom")[] = []
         if (handle.includes("w")) edges.push("left")
@@ -211,27 +241,29 @@ export function CanvasElementView({ element, selected, editing }: Props) {
         if (handle.includes("n")) edges.push("top")
         if (handle.includes("s")) edges.push("bottom")
         const allGuides: GuideLine[] = []
-        for (const edge of edges) {
-          const snap = snapResize(resized, drag.others, edge)
-          if (snap.dx) {
-            if (edge === "left") {
-              const newX = x + snap.dx
-              const newWidth = width - snap.dx
-              if (newWidth >= 8) { x = newX; width = newWidth }
-            } else if (edge === "right") {
-              width = width + snap.dx
+        if (!ev.shiftKey) {
+          for (const edge of edges) {
+            const snap = snapResize(resized, drag.others, edge)
+            if (snap.dx) {
+              if (edge === "left") {
+                const newX = x + snap.dx
+                const newWidth = width - snap.dx
+                if (newWidth >= 8) { x = newX; width = newWidth }
+              } else if (edge === "right") {
+                width = width + snap.dx
+              }
             }
-          }
-          if (snap.dy) {
-            if (edge === "top") {
-              const newY = y + snap.dy
-              const newHeight = height - snap.dy
-              if (newHeight >= 8) { y = newY; height = newHeight }
-            } else if (edge === "bottom") {
-              height = height + snap.dy
+            if (snap.dy) {
+              if (edge === "top") {
+                const newY = y + snap.dy
+                const newHeight = height - snap.dy
+                if (newHeight >= 8) { y = newY; height = newHeight }
+              } else if (edge === "bottom") {
+                height = height + snap.dy
+              }
             }
+            allGuides.push(...snap.guides)
           }
-          allGuides.push(...snap.guides)
         }
         setSnapGuides(allGuides)
         updateElement(element.id, { x, y, width, height })
@@ -273,7 +305,8 @@ export function CanvasElementView({ element, selected, editing }: Props) {
     <>
       <div
         ref={ref}
-        className={cn("group/el", selected && !editing && "ring-2 ring-primary")}
+        data-element-id={element.id}
+        className={cn("group/el", selected && !editing && "ring-2 ring-primary", element.groupId && "group-active")}
         style={wrapperStyle}
         onPointerDown={(e) => startDrag(e, "move")}
         onDoubleClick={(e) => {
@@ -284,9 +317,15 @@ export function CanvasElementView({ element, selected, editing }: Props) {
         {renderElementContent(element, editing, (text) =>
           updateElement(element.id, { text } as Partial<TextElement>),
         )}
-        {/* Selection ring overlay */}
+        {/* Selection ring overlay — dashed for grouped elements */}
         {selected && !editing && (
-          <div className="absolute inset-0 pointer-events-none ring-2 ring-primary" />
+          <div
+            className={cn(
+              "absolute inset-0 pointer-events-none ring-2",
+              element.groupId ? "ring-blue-500 ring-offset-1" : "ring-primary",
+            )}
+            style={element.groupId ? { outlineStyle: "dashed", outlineWidth: 2, outlineColor: "#3b82f6", outlineOffset: 1 } : undefined}
+          />
         )}
         {/* Resize handles */}
         {selected && !editing && !element.locked && (
@@ -324,7 +363,7 @@ function ResizeHandleView({ handle, onPointerDown }: { handle: ResizeHandle; onP
   return (
     <div
       onPointerDown={onPointerDown}
-      className="absolute w-2.5 h-2.5 bg-white border border-primary rounded-sm shadow-sm z-10 hover:scale-125 transition-transform"
+      className="resize-handle absolute w-2.5 h-2.5 bg-white border border-primary rounded-sm shadow-sm z-10"
       style={positions[handle]}
     />
   )
@@ -337,25 +376,29 @@ function SnapGuidesView({ guides }: { guides: GuideLine[] }) {
         g.axis === "x" ? (
           <div
             key={i}
-            className="absolute bg-pink-500 pointer-events-none"
+            className="absolute pointer-events-none snap-guide-x"
             style={{
               left: g.position - 0.5,
               top: g.start,
               width: 1,
               height: g.end - g.start,
               zIndex: 9999,
+              background: "#ec4899",
+              boxShadow: "0 0 4px rgba(236, 72, 153, 0.8)",
             }}
           />
         ) : (
           <div
             key={i}
-            className="absolute bg-pink-500 pointer-events-none"
+            className="absolute pointer-events-none snap-guide-y"
             style={{
               top: g.position - 0.5,
               left: g.start,
               height: 1,
               width: g.end - g.start,
               zIndex: 9999,
+              background: "#ec4899",
+              boxShadow: "0 0 4px rgba(236, 72, 153, 0.8)",
             }}
           />
         ),

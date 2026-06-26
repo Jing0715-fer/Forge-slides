@@ -21,6 +21,51 @@ export function Canvas() {
   const slide = currentSlide()
   const containerRef = useRef<HTMLDivElement>(null)
   const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+  const [dragOver, setDragOver] = useState(false)
+
+  // Handle image drag-and-drop onto canvas
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    const imgFile = files.find((f) => f.type.startsWith("image/"))
+    if (!imgFile) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const img = new Image()
+      img.onload = () => {
+        const { x, y } = clientToCanvas(e.clientX, e.clientY)
+        const maxW = 600
+        const maxH = 450
+        let w = img.naturalWidth
+        let h = img.naturalHeight
+        const ratio = Math.min(maxW / w, maxH / h, 1)
+        w = w * ratio
+        h = h * ratio
+        addElement(createImageElement(dataUrl, {
+          x: x - w / 2,
+          y: y - h / 2,
+          width: w,
+          height: h,
+          name: imgFile.name.replace(/\.[^.]+$/, ""),
+        }))
+      }
+      img.src = dataUrl
+    }
+    reader.readAsDataURL(imgFile)
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault()
+      setDragOver(true)
+    }
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    if (e.currentTarget === e.target) setDragOver(false)
+  }
 
   // Convert client coords to canvas coords
   function clientToCanvas(clientX: number, clientY: number) {
@@ -72,7 +117,18 @@ export function Canvas() {
   const elements = slide.elements.slice().sort((a, b) => a.zIndex - b.zIndex)
 
   return (
-    <div className="flex-1 relative overflow-auto bg-slate-100 dark:bg-slate-900" ref={containerRef}>
+    <div
+      className="canvas-scroll flex-1 relative overflow-auto bg-slate-100 dark:bg-slate-900"
+      ref={containerRef}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+    >
+      {dragOver && (
+        <div className="absolute inset-0 z-50 bg-primary/10 border-4 border-dashed border-primary rounded-lg flex items-center justify-center pointer-events-none">
+          <p className="text-primary font-semibold text-lg">Drop image to add to slide</p>
+        </div>
+      )}
       <div className="min-w-full min-h-full flex items-center justify-center p-12">
         <div
           id="editor-canvas"
@@ -82,6 +138,9 @@ export function Canvas() {
             width: CANVAS_WIDTH * zoom,
             height: CANVAS_HEIGHT * zoom,
             background: slide.background,
+            backgroundImage: slide.backgroundImage ? `url(${slide.backgroundImage})` : undefined,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
           }}
         >
           {/* Inner canvas at native resolution */}

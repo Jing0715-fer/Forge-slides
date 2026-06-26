@@ -10,8 +10,11 @@ import { createTextElement, createShapeElement, createImageElement, createContai
  *
  * Strategy:
  *  - Each top-level slide is one slide (if multiple <section> found, split)
- *  - Within a slide, walk the DOM and convert headings/paragraphs/divs into
- *    text or container elements with their bounding rects
+ *  - Within a slide, walk the DOM. For each positioned element:
+ *    - <img>  -> image element
+ *    - text-bearing element (h1..h6, p, span, li, label, button, a) -> text element
+ *    - other element with visible bg/border/shadow -> shape element
+ *    - container with positioned children -> create shape (if visible) THEN recurse
  */
 export function parseHtmlToSlides(html: string): Slide[] {
   if (typeof window === "undefined") return []
@@ -19,11 +22,12 @@ export function parseHtmlToSlides(html: string): Slide[] {
   const doc = parser.parseFromString(html, "text/html")
 
   // Find slide sections
-  let sections: Element[] = Array.from(doc.querySelectorAll("section.slide, section[data-slide], .slide"))
+  let sections: Element[] = Array.from(
+    doc.querySelectorAll("section.slide, section[data-slide], .slide"),
+  )
 
   // If there are no slide sections, treat the body as a single slide
   if (sections.length === 0) {
-    // If body has children, wrap them
     const body = doc.body
     if (body.children.length > 0) {
       sections = [body]
@@ -36,11 +40,20 @@ export function parseHtmlToSlides(html: string): Slide[] {
 }
 
 function parseSlideSection(section: Element, index: number): Slide {
-  // Compute background from inline style or computed style
-  const bg = section.getAttribute("data-background") ||
-    getStyle(section, "background-color") ||
-    getStyle(section, "background") ||
-    "#ffffff"
+  // Render the section off-screen to compute layout & computed styles
+  const container = document.createElement("div")
+  container.style.position = "absolute"
+  container.style.left = "-99999px"
+  container.style.top = "0"
+  container.style.width = "1280px"
+  container.style.height = "720px"
+  container.style.visibility = "hidden"
+  container.innerHTML = section.outerHTML
+  document.body.appendChild(container)
+  const renderedSection = container.firstElementChild as Element
+
+  // Compute background (could be gradient or color)
+  const bg = extractBackground(renderedSection) || "#ffffff"
 
   const elements: EditorElement[] = []
   let zIndex = 0
@@ -48,36 +61,42 @@ function parseSlideSection(section: Element, index: number): Slide {
   const walk = (node: Element, offsetX = 0, offsetY = 0) => {
     Array.from(node.children).forEach((child) => {
       const tag = child.tagName.toLowerCase()
-      // Skip script/style
-      if (tag === "script" || tag === "style") return
+      if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") return
 
-      const rect = child.getBoundingClientRect()
-      // Use offsetLeft/Top relative to section if available (works for absolutely positioned)
       const style = window.getComputedStyle(child)
       const position = style.position
 
-      let x = rect.left
-      let y = rect.top
-      let width = rect.width
-      let height = rect.height
-
-      // If absolutely positioned, use left/top relative to section
-      if (position === "absolute" || position === "relative") {
-        const left = parseFloat(style.left)
-        const top = parseFloat(style.top)
-        if (!isNaN(left)) x = left + offsetX
-        if (!isNaN(top)) y = top + offsetY
-        const w = parseFloat(style.width)
-        const h = parseFloat(style.height)
-        if (!isNaN(w)) width = w
-        if (!isNaN(h)) height = h
+      // Skip non-positioned elements unless they're at the slide root
+      // (we only care about absolutely or relatively positioned elements)
+      if (position !== "absolute" && position !== "relative" && position !== "fixed") {
+        // Recurse into static children in case they have positioned descendants
+        walk(child, offsetX, offsetY)
+        return
       }
 
-      // Heuristic: if the element has children that are also positioned, treat
-      // it as a container; otherwise convert to text/shape/image
-      const hasPositionedChildren = Array.from(child.children).some(
-        (c) => window.getComputedStyle(c).position === "absolute" || window.getComputedStyle(c).position === "relative",
-      )
+      let x = parseFloat(style.left)
+      let y = parseFloat(style.top)
+      if (isNaN(x)) x = (child as HTMLElement).offsetLeft
+      if (isNaN(y)) y = (child as HTMLElement).offsetTop
+      x += offsetX
+      y += offsetY
+
+      const width = parseFloat(style.width) || (child as HTMLElement).offsetWidth || 200
+      const height = parseFloat(style.height) || (child as HTMLElement).offsetHeight || 100
+
+      const textTags = ["h1", "h2", "h3", "h4", "h5", "h6", "p", "span", "li", "label", "button", "a", "strong", "em", "blockquote"]
+      const isTextTag = textTags.includes(tag)
+
+      // Determine if this element should become a shape (has visible bg, border, shadow, or radius)
+      const bgValue = extractBackground(child)
+      const hasBg = bgValue && bgValue !== "transparent" && bgValue !== "rgba(0, 0, 0, 0)"
+      const borderWidth = parseFloat(style.borderLeftWidth) || 0
+      const hasBorder = borderWidth > 0
+      const hasShadow = style.boxShadow && style.boxShadow !== "none"
+      const borderRadius = parseFloat(style.borderRadius) || 0
+      const isCard = hasBg || hasBorder || hasShadow
+
+      const text = (child.textContent || "").trim()
 
       if (tag === "img") {
         const src = child.getAttribute("src") || ""
@@ -85,89 +104,98 @@ function parseSlideSection(section: Element, index: number): Slide {
         elements.push(
           createImageElement(src, {
             x, y, width: width || 200, height: height || 200,
-            alt, zIndex: zIndex++, name: alt,
+            alt, zIndex: zIndex++, name: alt || "Image",
           }),
         )
-      } else if (hasPositionedChildren) {
-        // Walk into positioned children
-        walk(child, x, y)
-      } else if (tag === "h1" || tag === "h2" || tag === "h3" || tag === "h4" || tag === "p" || tag === "span" || tag === "div" || tag === "li" || tag === "label") {
-        const text = child.textContent?.trim() || ""
-        if (text) {
-          const fontSize = parseFloat(style.fontSize) || 16
-          const color = rgbToHex(style.color) || "#0f172a"
-          const fontWeight = style.fontWeight
-          const fontStyle = (style.fontStyle as "normal" | "italic") || "normal"
-          const textAlign = (style.textAlign as TextElement["textAlign"]) || "left"
-          const fontFamily = style.fontFamily || "Inter, system-ui, sans-serif"
-          const lineHeight = parseFloat(style.lineHeight) || 1.4
-          const fill = rgbToHex(style.backgroundColor) || "transparent"
-          const borderRadius = parseFloat(style.borderRadius) || 0
-          const textDecoration = (style.textDecoration.includes("underline")
-            ? "underline"
-            : style.textDecoration.includes("line-through")
-              ? "line-through"
-              : "none") as TextElement["textDecoration"]
+        return
+      }
 
-          const isHeading = tag.startsWith("h")
-          elements.push(
-            createTextElement({
-              x, y,
-              width: width || 400,
-              height: height || fontSize * 1.4,
-              text,
-              fontSize,
-              color,
-              fontWeight,
-              fontStyle,
-              textAlign,
-              fontFamily,
-              lineHeight: isNaN(lineHeight) ? 1.4 : lineHeight,
-              fill: fill === "transparent" ? "transparent" : fill,
-              borderRadius,
-              textDecoration,
-              verticalAlign: "middle",
-              name: isHeading ? `Heading ${tag}` : "Text",
-              zIndex: zIndex++,
-            }),
-          )
+      // If this is a text-bearing tag with text content, create a text element
+      // (also create a shape underneath if the parent has visible bg)
+      if (isTextTag && text) {
+        const fontSize = parseFloat(style.fontSize) || 16
+        const color = rgbToHex(style.color) || "#0f172a"
+        const fontWeight = style.fontWeight
+        const fontStyle = (style.fontStyle as "normal" | "italic") || "normal"
+        const textAlign = (style.textAlign as TextElement["textAlign"]) || "left"
+        const fontFamily = style.fontFamily || "Inter, system-ui, sans-serif"
+        // lineHeight from computed style: if it has "px" it's absolute (convert to multiplier);
+        // if unitless it's already a multiplier
+        let lineHeight = 1.4
+        if (style.lineHeight && style.lineHeight !== "normal") {
+          if (style.lineHeight.endsWith("px")) {
+            const px = parseFloat(style.lineHeight)
+            lineHeight = px / (fontSize || 16)
+          } else {
+            lineHeight = parseFloat(style.lineHeight) || 1.4
+          }
         }
-      } else if (tag === "svg" || tag === "rect" || tag === "circle" || tag === "path" || tag === "div") {
-        // Treat as a shape if it has visible background or border
-        const fill = rgbToHex(style.backgroundColor) || "transparent"
-        const stroke = rgbToHex(style.borderColor) || "#0f172a"
-        const strokeWidth = parseFloat(style.borderLeftWidth) || 0
-        const borderRadius = parseFloat(style.borderRadius) || 0
-        if (fill !== "transparent" || strokeWidth > 0) {
-          const shape: "rect" | "ellipse" = borderRadius > Math.min(width, height) / 2 - 1 && width > 0 && height > 0
+        const fill = bgValue || "transparent"
+        const textDecoration = (style.textDecoration.includes("underline")
+          ? "underline"
+          : style.textDecoration.includes("line-through")
+            ? "line-through"
+            : "none") as TextElement["textDecoration"]
+
+        const isHeading = tag.startsWith("h")
+        elements.push(
+          createTextElement({
+            x, y,
+            width: width || 400,
+            height: height || fontSize * 1.4,
+            text,
+            fontSize,
+            color,
+            fontWeight,
+            fontStyle,
+            textAlign,
+            fontFamily,
+            lineHeight: isNaN(lineHeight) ? 1.4 : lineHeight,
+            fill: fill === "transparent" ? "transparent" : fill,
+            borderRadius,
+            textDecoration,
+            verticalAlign: "middle",
+            name: isHeading ? `Heading ${tag}` : "Text",
+            zIndex: zIndex++,
+            shadow: hasShadow ? true : false,
+            shadowColor: hasShadow ? extractShadowColor(style.boxShadow) : undefined,
+            shadowBlur: hasShadow ? extractShadowBlur(style.boxShadow) : undefined,
+            shadowX: hasShadow ? extractShadowX(style.boxShadow) : undefined,
+            shadowY: hasShadow ? extractShadowY(style.boxShadow) : undefined,
+          }),
+        )
+        return
+      }
+
+      // If this is a div/container with visible bg/border/shadow, create a shape
+      if (isCard) {
+        const shape: "rect" | "ellipse" =
+          borderRadius > Math.min(width, height) / 2 - 1 && width > 0 && height > 0
             ? "ellipse"
             : "rect"
-          elements.push(
-            createShapeElement(shape, {
-              x, y, width: width || 200, height: height || 200,
-              fill: fill === "transparent" ? "#ffffff" : fill,
-              stroke,
-              strokeWidth,
-              borderRadius,
-              zIndex: zIndex++,
-              name: shape === "rect" ? "Rectangle" : "Ellipse",
-            }),
-          )
-        }
+        elements.push(
+          createShapeElement(shape, {
+            x, y, width: width || 200, height: height || 200,
+            fill: hasBg ? bgValue : "#ffffff",
+            stroke: hasBorder ? rgbToHex(style.borderLeftColor) || "#0f172a" : "transparent",
+            strokeWidth: borderWidth,
+            borderRadius,
+            shadow: hasShadow ? true : false,
+            shadowColor: hasShadow ? extractShadowColor(style.boxShadow) : undefined,
+            shadowBlur: hasShadow ? extractShadowBlur(style.boxShadow) : undefined,
+            shadowX: hasShadow ? extractShadowX(style.boxShadow) : undefined,
+            shadowY: hasShadow ? extractShadowY(style.boxShadow) : undefined,
+            zIndex: zIndex++,
+            name: shape === "rect" ? "Rectangle" : "Ellipse",
+          }),
+        )
       }
+
+      // Always recurse into children (positioned or not)
+      walk(child, x, y)
     })
   }
 
-  // Render the section off-screen to compute layout
-  const container = document.createElement("div")
-  container.style.position = "absolute"
-  container.style.left = "-99999px"
-  container.style.top = "0"
-  container.style.width = "1280px"
-  container.style.height = "720px"
-  container.innerHTML = section.outerHTML
-  document.body.appendChild(container)
-  const renderedSection = container.firstElementChild as Element
   if (renderedSection) {
     walk(renderedSection)
   }
@@ -181,9 +209,50 @@ function parseSlideSection(section: Element, index: number): Slide {
   }
 }
 
-function getStyle(el: Element, prop: string): string {
+// Extract background as a CSS value, preserving gradients
+function extractBackground(el: Element): string | null {
   const style = window.getComputedStyle(el)
-  return style.getPropertyValue(prop)
+  // backgroundImage takes precedence for gradients
+  const img = style.backgroundImage
+  if (img && img !== "none") return img
+  const bg = style.background
+  if (bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") {
+    // Computed background shorthand may include color, image, etc.
+    return bg
+  }
+  const bgColor = style.backgroundColor
+  if (bgColor && bgColor !== "rgba(0, 0, 0, 0)" && bgColor !== "transparent") {
+    return bgColor
+  }
+  return null
+}
+
+// Parse a CSS box-shadow value into its components
+function parseBoxShadow(shadow: string): { x: number; y: number; blur: number; color: string } | null {
+  if (!shadow || shadow === "none") return null
+  // Match: offsetX offsetY blurRadius [spread] color
+  const m = shadow.match(
+    /(-?\d+\.?\d*)px\s+(-?\d+\.?\d*)px\s+(-?\d+\.?\d*)px\s*(?:(-?\d+\.?\d*)px\s*)?(rgba?\([^)]+\)|#[0-9a-fA-F]+|[a-z]+)/,
+  )
+  if (!m) return null
+  return {
+    x: parseFloat(m[1]),
+    y: parseFloat(m[2]),
+    blur: parseFloat(m[3]),
+    color: m[5] || "rgba(15,23,42,0.15)",
+  }
+}
+function extractShadowColor(shadow: string): string {
+  return parseBoxShadow(shadow)?.color || "rgba(15,23,42,0.15)"
+}
+function extractShadowBlur(shadow: string): number {
+  return parseBoxShadow(shadow)?.blur ?? 24
+}
+function extractShadowX(shadow: string): number {
+  return parseBoxShadow(shadow)?.x ?? 0
+}
+function extractShadowY(shadow: string): number {
+  return parseBoxShadow(shadow)?.y ?? 8
 }
 
 function rgbToHex(color: string): string | null {
