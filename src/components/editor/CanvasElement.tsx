@@ -552,6 +552,7 @@ function renderElementContent(
   switch (element.type) {
     case "text": {
       const t = element as TextElement
+      const isList = t.listType && t.listType !== "none"
       const textStyle: React.CSSProperties = {
         ...baseStyle,
         fontSize: t.fontSize,
@@ -601,6 +602,31 @@ function renderElementContent(
             }}
             className="w-full h-full"
           />
+        )
+      }
+      // Render as list if listType is set
+      if (isList) {
+        const lines = t.text.split("\n").filter((l) => l.trim() !== "")
+        const listStyleType = t.listType === "number"
+          ? (t.listStyle === "lower-alpha" ? "lower-alpha" : t.listStyle === "upper-roman" ? "upper-roman" : "decimal")
+          : (t.listStyle || "disc")
+        const Tag = t.listType === "number" ? "ol" : "ul"
+        return (
+          <div style={{ ...textStyle, display: "block", overflow: "hidden" }}>
+            <Tag
+              style={{
+                listStyleType,
+                margin: 0,
+                paddingLeft: (t.listIndent || 0) + (t.fontSize || 16) * 1.2,
+                textAlign: t.textAlign as React.CSSProperties["textAlign"],
+              }}
+              className="whitespace-pre-wrap break-words"
+            >
+              {lines.map((line, i) => (
+                <li key={i} style={{ marginBottom: 0 }}>{line}</li>
+              ))}
+            </Tag>
+          </div>
         )
       }
       return (

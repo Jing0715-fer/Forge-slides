@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Type, Square, Circle, Triangle, Minus, Image as ImageIcon, Upload,
   Undo2, Redo2, Copy, Trash2, BringToFront, SendToBack,
-  ZoomIn, ZoomOut, Grid3x3, Magnet, Download, FileText, HelpCircle, Search, ImageDown, Play, Clipboard,
+  ZoomIn, ZoomOut, Grid3x3, Magnet, Download, FileText, HelpCircle, Search, ImageDown, Play, Clipboard, Paintbrush, Maximize,
 } from "lucide-react"
 import { AlignmentToolbar } from "./AlignmentToolbar"
 import { TextStylePresets } from "./TextStylePresets"
@@ -31,7 +31,7 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
     addElement, selectedIds, removeElements, duplicateElements,
     bringToFront, sendToBack, undo, redo, past, future,
     zoom, setZoom, showGrid, toggleGrid, showGuides, toggleGuides,
-    slides, masterElements,
+    slides, masterElements, copyFormat, pasteFormat, formatClipboard,
   } = useEditor()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -163,6 +163,23 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
             <TooltipBtn label="Duplicate (Ctrl+D)" onClick={() => duplicateElements(selectedIds)} disabled={!hasSelection}>
               <Copy className="w-4 h-4" />
             </TooltipBtn>
+            <TooltipBtn
+              label={formatClipboard ? "Paste Format (click to apply)" : "Copy Format (select an element first)"}
+              onClick={() => {
+                if (formatClipboard && selectedIds.length > 0) {
+                  pasteFormat(selectedIds)
+                  toast.success(`Format applied to ${selectedIds.length} element${selectedIds.length === 1 ? "" : "s"}`)
+                } else if (selectedIds.length === 1) {
+                  copyFormat(selectedIds[0])
+                  toast.success("Format copied — select another element and click again to apply")
+                } else {
+                  toast.error("Select a single element to copy format from")
+                }
+              }}
+              active={!!formatClipboard}
+            >
+              <Paintbrush className="w-4 h-4" />
+            </TooltipBtn>
             <TooltipBtn label="Bring to Front" onClick={() => selectedIds.forEach(bringToFront)} disabled={!hasSelection}>
               <BringToFront className="w-4 h-4" />
             </TooltipBtn>
@@ -189,6 +206,24 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
             </button>
             <TooltipBtn label="Zoom In" onClick={() => setZoom(zoom + 0.1)}>
               <ZoomIn className="w-4 h-4" />
+            </TooltipBtn>
+            <TooltipBtn
+              label="Fit to Screen"
+              onClick={() => {
+                // Calculate fit-to-screen zoom based on viewport
+                const canvasEl = document.getElementById("editor-canvas")
+                if (canvasEl) {
+                  const container = canvasEl.parentElement?.parentElement
+                  if (container) {
+                    const containerW = container.clientWidth - 96 // padding
+                    const containerH = container.clientHeight - 96
+                    const fitZoom = Math.min(containerW / 1280, containerH / 720, 1)
+                    setZoom(Math.max(0.1, Math.min(fitZoom, 2)))
+                  }
+                }
+              }}
+            >
+              <Maximize className="w-4 h-4" />
             </TooltipBtn>
             <TooltipBtn label="Toggle Grid" onClick={toggleGrid} active={showGrid}>
               <Grid3x3 className="w-4 h-4" />

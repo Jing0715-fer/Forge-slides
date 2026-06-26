@@ -407,6 +407,7 @@ function elementToHtml(el: EditorElement): string {
   switch (el.type) {
     case "text": {
       const t = el as TextElement
+      const isList = t.listType && t.listType !== "none"
       const textStyle = [
         `font-size:${t.fontSize}px`,
         `font-family:${t.fontFamily}`,
@@ -423,6 +424,15 @@ function elementToHtml(el: EditorElement): string {
         `justify-content:${t.verticalAlign === "top" ? "flex-start" : t.verticalAlign === "bottom" ? "flex-end" : "center"}`,
         `overflow:hidden`,
       ].join(";")
+      if (isList) {
+        const lines = t.text.split("\n").filter((l) => l.trim() !== "")
+        const listStyleType = t.listType === "number"
+          ? (t.listStyle === "lower-alpha" ? "lower-alpha" : t.listStyle === "upper-roman" ? "upper-roman" : "decimal")
+          : (t.listStyle || "disc")
+        const tag = t.listType === "number" ? "ol" : "ul"
+        const items = lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")
+        return `      <div class="${cls}" data-name="${escapeAttr(t.name)}" style="${styleStr};${textStyle};display:block"><${tag} style="list-style-type:${listStyleType};margin:0;padding-left:${(t.listIndent || 0) + (t.fontSize || 16) * 1.2}px">${items}</${tag}></div>`
+      }
       return `      <div class="${cls}" data-name="${escapeAttr(t.name)}" style="${styleStr};${textStyle}">${escapeHtml(t.text)}</div>`
     }
     case "rect":

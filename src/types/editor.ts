@@ -51,6 +51,10 @@ export interface TextElement extends BaseElement {
   // If true the text auto-sizes its height to content (like a PPT placeholder)
   autoSize: boolean
   padding: number
+  // PPT-style list formatting
+  listType?: "none" | "bullet" | "number"
+  listStyle?: "disc" | "circle" | "square" | "decimal" | "lower-alpha" | "upper-roman"
+  listIndent?: number // px indentation for list items
 }
 
 export interface ShapeElement extends BaseElement {

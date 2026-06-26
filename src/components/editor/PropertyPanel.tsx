@@ -346,6 +346,74 @@ function TextProps({
       </Select>
 
       <ColorField label="Text Color" value={element.color} onChange={(c) => set("color", c)} />
+
+      {/* List formatting (PPT-style bullets & numbering) */}
+      <Label className="text-xs mt-3 block">List</Label>
+      <div className="flex gap-1 mt-1">
+        <Toggle
+          pressed={(element.listType || "none") === "none"}
+          onPressedChange={() => set("listType", "none" as TextElement["listType"])}
+          className="h-8 w-8"
+          title="No list"
+        >
+          <span className="text-[10px] font-mono">—</span>
+        </Toggle>
+        <Toggle
+          pressed={(element.listType || "none") === "bullet"}
+          onPressedChange={() => set("listType", "bullet" as TextElement["listType"])}
+          className="h-8 w-8"
+          title="Bullet list"
+        >
+          <span className="text-sm leading-none">•</span>
+        </Toggle>
+        <Toggle
+          pressed={(element.listType || "none") === "number"}
+          onPressedChange={() => set("listType", "number" as TextElement["listType"])}
+          className="h-8 w-8"
+          title="Numbered list"
+        >
+          <span className="text-[10px] font-mono">1.</span>
+        </Toggle>
+      </div>
+      {(element.listType === "bullet" || element.listType === "number") && (
+        <div className="flex gap-2 mt-2">
+          <div className="flex-1">
+            <Label className="text-[10px] text-muted-foreground">Style</Label>
+            <Select
+              value={element.listStyle || "disc"}
+              onValueChange={(v) => set("listStyle", v as TextElement["listStyle"])}
+            >
+              <SelectTrigger className="h-8 mt-1 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {element.listType === "bullet" ? (
+                  <>
+                    <SelectItem value="disc">● Filled circle</SelectItem>
+                    <SelectItem value="circle">○ Hollow circle</SelectItem>
+                    <SelectItem value="square">■ Filled square</SelectItem>
+                  </>
+                ) : (
+                  <>
+                    <SelectItem value="decimal">1. 2. 3.</SelectItem>
+                    <SelectItem value="lower-alpha">a. b. c.</SelectItem>
+                    <SelectItem value="upper-roman">I. II. III.</SelectItem>
+                  </>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-20">
+            <Label className="text-[10px] text-muted-foreground">Indent</Label>
+            <Input
+              type="number"
+              value={element.listIndent || 0}
+              onChange={(e) => set("listIndent", parseInt(e.target.value) || 0)}
+              className="h-8 mt-1 text-xs"
+            />
+          </div>
+        </div>
+      )}
     </Section>
   )
 }

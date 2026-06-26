@@ -72,6 +72,9 @@ export function createTextElement(
     verticalAlign: "middle",
     autoSize: false,
     padding: 8,
+    listType: "none",
+    listStyle: "disc",
+    listIndent: 0,
     name: "Text",
     ...partial,
   } as TextElement
@@ -393,6 +396,10 @@ interface EditorState {
   // clipboard
   copy: (ids: string[]) => void
   paste: () => void
+  // Format painter (copy formatting from one element to others)
+  copyFormat: (id: string) => void
+  pasteFormat: (ids: string[]) => void
+  formatClipboard: Partial<EditorElement> | null
   // history
   undo: () => void
   redo: () => void
@@ -441,6 +448,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   currentSlideId: "",
   selectedIds: [],
   clipboard: [],
+  formatClipboard: null,
   masterElements: [],
   masterVisible: true,
   past: [],
@@ -1030,6 +1038,102 @@ export const useEditor = create<EditorState>((set, get) => ({
     })
   },
 
+  copyFormat: (id) => {
+    set((s) => {
+      const slide = s.slides.find((sl) => sl.id === (s.currentSlideId || s.slides[0]?.id))
+      if (!slide) return s
+      const el = slide.elements.find((e) => e.id === id)
+      if (!el) return s
+      // Copy only formatting properties (not position, size, text content, id, etc.)
+      const { ...rest } = el
+      const formatProps: Partial<EditorElement> = {
+        fill: rest.fill,
+        stroke: rest.stroke,
+        strokeWidth: rest.strokeWidth,
+        borderRadius: rest.borderRadius,
+        shadow: rest.shadow,
+        shadowColor: rest.shadowColor,
+        shadowBlur: rest.shadowBlur,
+        shadowX: rest.shadowX,
+        shadowY: rest.shadowY,
+        opacity: rest.opacity,
+      } as Partial<EditorElement>
+      // For text elements, also copy typography
+      if (el.type === "text") {
+        const t = el as TextElement
+        Object.assign(formatProps, {
+          fontSize: t.fontSize,
+          fontFamily: t.fontFamily,
+          fontWeight: t.fontWeight,
+          fontStyle: t.fontStyle,
+          textDecoration: t.textDecoration,
+          textAlign: t.textAlign,
+          color: t.color,
+          lineHeight: t.lineHeight,
+          letterSpacing: t.letterSpacing,
+          padding: t.padding,
+          listType: t.listType,
+          listStyle: t.listStyle,
+          listIndent: t.listIndent,
+        })
+      }
+      return { formatClipboard: formatProps }
+    })
+  },
+
+  pasteFormat: (ids) => {
+    set((s) => {
+      if (!s.formatClipboard) return s
+      const slide = s.slides.find((sl) => sl.id === (s.currentSlideId || s.slides[0]?.id))
+      if (!slide) return s
+      const slides = s.slides.map((sl) => {
+        if (sl.id !== slide.id) return sl
+        return {
+          ...sl,
+          elements: sl.elements.map((el) => {
+            if (!ids.includes(el.id)) return el
+            // Only apply type-appropriate properties
+            const patch: Partial<EditorElement> = {}
+            const fmt = s.formatClipboard!
+            // Common properties
+            if (fmt.fill !== undefined) patch.fill = fmt.fill
+            if (fmt.stroke !== undefined) patch.stroke = fmt.stroke
+            if (fmt.strokeWidth !== undefined) patch.strokeWidth = fmt.strokeWidth
+            if (fmt.borderRadius !== undefined) patch.borderRadius = fmt.borderRadius
+            if (fmt.shadow !== undefined) patch.shadow = fmt.shadow
+            if (fmt.shadowColor !== undefined) patch.shadowColor = fmt.shadowColor
+            if (fmt.shadowBlur !== undefined) patch.shadowBlur = fmt.shadowBlur
+            if (fmt.shadowX !== undefined) patch.shadowX = fmt.shadowX
+            if (fmt.shadowY !== undefined) patch.shadowY = fmt.shadowY
+            if (fmt.opacity !== undefined) patch.opacity = fmt.opacity
+            // Text-specific
+            if (el.type === "text") {
+              if (fmt.fontSize !== undefined) (patch as Partial<TextElement>).fontSize = fmt.fontSize
+              if (fmt.fontFamily !== undefined) (patch as Partial<TextElement>).fontFamily = fmt.fontFamily!
+              if (fmt.fontWeight !== undefined) (patch as Partial<TextElement>).fontWeight = fmt.fontWeight!
+              if (fmt.fontStyle !== undefined) (patch as Partial<TextElement>).fontStyle = fmt.fontStyle! as "normal" | "italic"
+              if (fmt.textDecoration !== undefined) (patch as Partial<TextElement>).textDecoration = fmt.textDecoration! as TextElement["textDecoration"]
+              if (fmt.textAlign !== undefined) (patch as Partial<TextElement>).textAlign = fmt.textAlign! as TextElement["textAlign"]
+              if (fmt.color !== undefined) (patch as Partial<TextElement>).color = fmt.color!
+              if (fmt.lineHeight !== undefined) (patch as Partial<TextElement>).lineHeight = fmt.lineHeight!
+              if (fmt.letterSpacing !== undefined) (patch as Partial<TextElement>).letterSpacing = fmt.letterSpacing!
+              if (fmt.padding !== undefined) (patch as Partial<TextElement>).padding = fmt.padding!
+              if (fmt.listType !== undefined) (patch as Partial<TextElement>).listType = fmt.listType! as TextElement["listType"]
+              if (fmt.listStyle !== undefined) (patch as Partial<TextElement>).listStyle = fmt.listStyle! as TextElement["listStyle"]
+              if (fmt.listIndent !== undefined) (patch as Partial<TextElement>).listIndent = fmt.listIndent!
+            }
+            return { ...el, ...patch } as EditorElement
+          }),
+        }
+      })
+      return {
+        slides,
+        past: pushHistory(s.past, s.slides, "Paste format", "Paintbrush"),
+        future: [],
+      }
+    })
+  },
+
   undo: () => {
     set((s) => {
       if (s.past.length === 0) return s
@@ -1169,6 +1273,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       currentSlideId: slide.id,
       selectedIds: [],
       clipboard: [],
+      formatClipboard: null,
       masterElements: [],
       masterVisible: true,
       past: [],

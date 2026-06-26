@@ -47,6 +47,7 @@ export function Editor({ initialImportOpen, onExit }: EditorProps = {}) {
     selectedIds, removeElements, duplicateElements, copy, paste,
     undo, redo, updateElements, currentSlide, slides, alignElements,
     distributeElements, matchSize, groupElements, ungroupElements,
+    copyFormat, pasteFormat, formatClipboard,
   } = useEditor()
 
   const { lastSaved, pending, restoreData, acceptRestore, dismissRestore } = useAutosave()
@@ -108,8 +109,21 @@ export function Editor({ initialImportOpen, onExit }: EditorProps = {}) {
       if (meta && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); return }
 
       // Copy / Paste
-      if (meta && e.key === "c" && selectedIds.length > 0) { e.preventDefault(); copy(selectedIds); return }
-      if (meta && e.key === "v") { e.preventDefault(); paste(); return }
+      if (meta && e.key === "c" && !e.shiftKey && selectedIds.length > 0) { e.preventDefault(); copy(selectedIds); return }
+      if (meta && e.key === "v" && !e.shiftKey) { e.preventDefault(); paste(); return }
+      // Format painter: Ctrl+Shift+C = copy format, Ctrl+Shift+V = paste format
+      if (meta && e.shiftKey && e.key === "C" && selectedIds.length === 1) {
+        e.preventDefault()
+        copyFormat(selectedIds[0])
+        toast.success("Format copied — press Ctrl+Shift+V on another element to apply")
+        return
+      }
+      if (meta && e.shiftKey && e.key === "V" && formatClipboard && selectedIds.length > 0) {
+        e.preventDefault()
+        pasteFormat(selectedIds)
+        toast.success(`Format applied to ${selectedIds.length} element${selectedIds.length === 1 ? "" : "s"}`)
+        return
+      }
       if (meta && e.key === "d" && selectedIds.length > 0) {
         e.preventDefault()
         duplicateElements(selectedIds)
@@ -227,7 +241,7 @@ export function Editor({ initialImportOpen, onExit }: EditorProps = {}) {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [selectedIds, removeElements, duplicateElements, copy, paste, undo, redo, updateElements, alignElements, distributeElements, matchSize, groupElements, ungroupElements, handleSave])
+  }, [selectedIds, removeElements, duplicateElements, copy, paste, undo, redo, updateElements, alignElements, distributeElements, matchSize, groupElements, ungroupElements, handleSave, copyFormat, pasteFormat, formatClipboard])
 
   const lastSavedText = lastSaved
     ? new Date(lastSaved).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })

@@ -32,6 +32,8 @@ const SHORTCUTS: { category: string; items: { keys: string; desc: string }[] }[]
       { keys: "Ctrl + D", desc: "Duplicate selected" },
       { keys: "Ctrl + C", desc: "Copy selected" },
       { keys: "Ctrl + V", desc: "Paste from clipboard" },
+      { keys: "Ctrl + Shift + C", desc: "Copy format (format painter)" },
+      { keys: "Ctrl + Shift + V", desc: "Paste format to selected" },
       { keys: "Ctrl + G", desc: "Group selected (2+ elements)" },
       { keys: "Ctrl + Shift + G", desc: "Ungroup selected" },
       { keys: "Double-click text", desc: "Edit text in place" },

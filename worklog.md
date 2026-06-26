@@ -2,91 +2,74 @@
 
 ## Project Status
 
-**Phase**: v10.1 — Hydration fix, VLM-optimized landing page, improved history panel
-**Last Updated**: 2026-06-26 23:25 (Asia/Shanghai)
+**Phase**: v11 — PPT-style lists, Format Painter, Fit-to-Screen
+**Last Updated**: 2026-06-27 07:55 (Asia/Shanghai)
 
 SlideForge is a PowerPoint-like HTML editor for fine-tuning AI-generated slides.
 The app runs on Next.js 16 at `http://localhost:3000/` (single route `/`).
 
 ---
 
-## Current State (v10.1)
+## Current State (v11)
 
-All v1-v10 features remain working. This session fixed a critical hydration error, optimized the landing page UI based on VLM feedback (7→8.2/10), and improved the History panel visibility (5→8/10).
+All v1-v10.1 features remain working. This session added 3 major PPT-style features: bullet/numbered lists, Format Painter, and Fit-to-Screen zoom.
 
-### Verified This Session (agent-browser + VLM, 2026-06-26 23:25)
-- **Hydration Error Fix**: Fixed "Hydration failed because the server rendered HTML didn't match the client" error. Root cause: `hasSavedSession` lazy `useState` initializer read `localStorage` on the client but returned `false` on the server, causing a mismatch when the "Restore session" button rendered only on the client. Fix: initialize `hasSavedSession` to `false` on both server and client, then update via `useEffect` after mount (with `eslint-disable-next-line react-hooks/set-state-in-effect` since reading localStorage is a valid external-system subscription). Verified: 0 hydration errors in dev.log.
-- **Landing Page VLM Optimization**: Iteratively improved the landing page based on VLM feedback:
-  - Removed redundant "Open Editor" button (was duplicate of "Start Editing")
-  - Standardized feature card colors to brand palette (pink/purple/indigo gradients instead of mixed amber/teal/violet)
-  - Increased feature card padding (p-6→p-7) and icon size (w-11→w-12, rounded-lg→rounded-xl)
-  - Added section badges ("Features", "Workflow") with Sparkles/Zap icons
-  - Made subtitle more prominent (split into two lines: bold value prop + muted description)
-  - Changed primary CTA to gradient (from-pink-500 to-purple-600) with colored shadow
-  - Added anchor links ("Features", "How it works") in header
-  - Added slide preview mockup in hero section (mini editor window with gradient slide, 3 cards, selection handles, glow effect)
-  - Consistent brand colors in stats row (pink/purple/fuchsia instead of amber/violet/emerald)
-  - Background decorative elements use brand colors (pink/purple/indigo)
-- **History Panel Visibility Improvement**: Made the History panel more prominent:
-  - Added `border-t-2 border-primary/10` and gradient background (`from-muted/30 to-background`)
-  - History icon now in a rounded badge container (`bg-primary/10`)
-  - Action count badge styled as pill (`bg-primary/10 text-primary/80 rounded-full`)
-  - Header label uses `text-foreground/90` instead of muted
-  - Increased header padding (py-2→py-2.5)
-  - Added `shrink-0` to prevent compression
-- **E2E Test Results**: All tests pass:
-  - Hydration errors: 0 ✓
-  - Landing page loads ✓
-  - Navigate to editor ✓
-  - Home button returns to landing ✓
-  - Undo works (12→11 elements) ✓
-  - Redo works (11→12 elements) ✓
-  - History panel visible ✓
-  - Jump to history point works ✓
-
-### VLM Score Progression
-- Landing page: 7/10 → 8/10 → 8.2/10 (after slide preview mockup)
-- Color scheme: 7/10 → 9/10
-- CTA clarity: 7/10 → 9/10
-- History panel visibility: 5/10 → 8/10
+### Verified This Session (agent-browser + VLM, 2026-06-27 07:55)
+- **PPT-Style Lists (Bullets & Numbering)**: Added `listType`, `listStyle`, and `listIndent` fields to `TextElement`. Text elements can now render as bullet lists (● Filled circle, ○ Hollow circle, ■ Filled square) or numbered lists (1. 2. 3., a. b. c., I. II. III.). Each line of text becomes a list item. Property panel has 3 toggle buttons (—/•/1.) plus style selector and indent input. HTML export renders proper `<ul>`/`<ol>` tags. Verified: created text with 3 lines → applied bullet list → DOM showed `<ul>` with 3 `<li>` items ("Point one", "Point two", "Point three").
+- **Format Painter**: New `copyFormat` and `pasteFormat` store actions with `formatClipboard` state. Copies fill, stroke, shadow, opacity, and all text typography (fontSize, fontFamily, fontWeight, color, lineHeight, listType, etc.) — but NOT position, size, or text content. Paintbrush button in toolbar (active state when format is on clipboard). Keyboard shortcuts: Ctrl+Shift+C (copy format), Ctrl+Shift+V (paste format). Verified: selected Title → clicked paintbrush → "Format copied" toast → selected Body A → clicked paintbrush → "Format applied to 1 element" toast → history panel showed "Paste format" entry.
+- **Fit-to-Screen Zoom**: New Maximize icon button in zoom controls. Calculates optimal zoom based on canvas container dimensions and 1280×720 slide size. Verified: button present in toolbar (DOM confirmed `svg.lucide-maximize` exists).
+- **Updated Keyboard Shortcuts Dialog**: Added "Ctrl + Shift + C" (Copy format) and "Ctrl + Shift + V" (Paste format) to the Editing category.
 
 ### Bug Fixes This Session
-- **Hydration mismatch**: `hasSavedSession` lazy initializer caused SSR/client mismatch. Fixed by using `useState(false)` + `useEffect` to read localStorage after mount.
-- **History panel ScrollArea**: Replaced `ScrollArea` component with native `overflow-y-auto` + `editor-scroll` class for more reliable scrolling in the constrained panel.
+- None — code was clean from v10.1. Lint passes with 0 errors.
 
 ---
 
 ## Architecture
-- **State**: Zustand store at `src/store/editor-store.ts` — exports `HistoryEntry` type, includes `jumpToHistory`, `clearHistory`. History uses `HistoryEntry[]` with label/timestamp/icon.
-- **Types**: `src/types/editor.ts` (Slide has notes?, transition? fields).
-- **Theming**: next-themes with `attribute="class"`, ThemeProvider in layout.tsx, ThemeToggle (used in landing + editor).
-- **HTML I/O**: `src/lib/html-io.ts` — parseHtmlToSlides, parseMultipleHtmlToSlides, exportSlidesToHtml, ParsedFile.
+- **State**: Zustand store at `src/store/editor-store.ts` — now includes `formatClipboard`, `copyFormat`, `pasteFormat`. History uses `HistoryEntry[]` with label/timestamp/icon.
+- **Types**: `src/types/editor.ts` — `TextElement` now has `listType?`, `listStyle?`, `listIndent?` fields.
+- **Theming**: next-themes with `attribute="class"`, ThemeProvider in layout.tsx, ThemeToggle.
+- **HTML I/O**: `src/lib/html-io.ts` — text export now renders `<ul>`/`<ol>` for list elements.
 - **Project I/O**: `src/lib/project-io.ts` — SlideForge JSON project files.
 - **Persistence**: `src/lib/persistence.ts` (v2 format) + `src/hooks/use-autosave.ts`.
-- **Components**: LandingPage (with slide preview mockup), Editor (Home button + initialImportOpen), Toolbar, AlignmentToolbar, TextStylePresets, Canvas, CanvasElement, MasterElementView, LayersPanel (includes HistoryPanel), HistoryPanel (improved visibility with badge + gradient), SlidesPanel, PropertyPanel (wraps SpeakerNotesPanel), SpeakerNotesPanel, ImportHtmlDialog (3-tab), ExportDialog, KeyboardShortcutsDialog, FindReplaceDialog, TemplatePickerDialog, PresentationMode, ProjectMenu, CanvasContextMenu, SlideContextMenu, ColorSwatchPicker, GradientPicker, ThemeToggle, StatusBar.
-- **Page routing**: `src/app/page.tsx` manages "landing" vs "editor" view state with `useEffect`-based localStorage check (hydration-safe).
+- **Components**: LandingPage (with slide preview mockup), Editor (Home button + format painter shortcuts), Toolbar (Paintbrush + Fit-to-Screen + Copy HTML), AlignmentToolbar (opacity slider), TextStylePresets, Canvas, CanvasElement (list rendering), MasterElementView, LayersPanel (includes HistoryPanel), HistoryPanel (timeline with jump-to-point), SlidesPanel, PropertyPanel (list controls + SpeakerNotesPanel), SpeakerNotesPanel, ImportHtmlDialog (3-tab), ExportDialog, KeyboardShortcutsDialog, FindReplaceDialog, TemplatePickerDialog, PresentationMode, ProjectMenu, CanvasContextMenu, SlideContextMenu, ColorSwatchPicker, GradientPicker, ThemeToggle, StatusBar.
+- **Page routing**: `src/app/page.tsx` manages "landing" vs "editor" view state (hydration-safe).
 
 ---
 
-## All Features (v1 through v10.1)
+## All Features (v1 through v11)
+
+### PPT-Style Text Formatting (NEW in v11)
+- Bullet lists: ● Filled circle, ○ Hollow circle, ■ Filled square
+- Numbered lists: 1. 2. 3. (decimal), a. b. c. (lower-alpha), I. II. III. (upper-roman)
+- List indent control (px)
+- Each text line becomes a list item
+- Proper `<ul>`/`<ol>` rendering in canvas and HTML export
+
+### Format Painter (NEW in v11)
+- Copy formatting from one element (fill, stroke, shadow, opacity, typography)
+- Paste formatting to one or more selected elements
+- Type-aware: text formatting only applies to text elements
+- Paintbrush button in toolbar with active state
+- Keyboard shortcuts: Ctrl+Shift+C (copy), Ctrl+Shift+V (paste)
+- History entry: "Paste format" (Paintbrush icon)
+
+### Fit-to-Screen Zoom (NEW in v11)
+- Maximize button in zoom controls
+- Calculates optimal zoom based on viewport and 1280×720 canvas
+- Range: 0.1 to 2.0
 
 ### Landing Page
 - Hero section with gradient title, badge, CTA buttons, and slide preview mockup
 - 6 feature cards with consistent brand-color gradient icons
-- "How it works" 3-step visual guide with numbered badges
-- Final CTA section with crown badge
-- Restore previous session link (when autosave exists)
-- CSS entrance animations (staggered fade-up)
-- ThemeToggle + anchor links in header
+- "How it works" 3-step visual guide
+- Restore previous session link
 
 ### History Timeline
-- Visual timeline panel at bottom of Layers panel (prominent with gradient + badge)
-- Labeled entries with icons (21 action types)
-- Relative timestamps ("just now", "18s ago")
-- "Current state" indicator with blue dot
+- Visual timeline panel with labeled entries (21 action types)
+- Relative timestamps, "Current state" indicator
 - Click any entry to jump to that point
-- Undo/Redo/Clear buttons in header
-- Collapsible, 50-step limit
+- Undo/Redo/Clear buttons, 50-step limit
 
 ### Editing
 - PPT-like drag with smart alignment guides
@@ -97,7 +80,7 @@ All v1-v10 features remain working. This session fixed a critical hydration erro
 - Multi-select bounding box with count label
 
 ### Elements
-- Text (full typography + 8 style presets)
+- Text (full typography + 8 style presets + bullet/number lists)
 - Rectangle, Ellipse, Triangle, Line
 - Image (file upload, URL, drag-drop)
 - Container (raw HTML)
@@ -126,13 +109,15 @@ All v1-v10 features remain working. This session fixed a critical hydration erro
 - Dark mode toggle
 - Status bar with counts and indicators
 - Home button in editor header
+- Fit-to-Screen zoom button
 - Smooth animations throughout
 
 ### Persistence
 - Autosave v2 with masterElements, restore from landing
 
-### Keyboard Shortcuts (48+)
+### Keyboard Shortcuts (50+)
 - T, Ctrl+Z/Y/C/V/D/A/S/G/H/F, F5, arrows, Shift+corner, Shift+rotate, Ctrl+Shift+L/E/R/T/M/B, ?, Esc, right-click
+- **Ctrl+Shift+C / Ctrl+Shift+V (NEW)**: Format painter copy/paste
 - Presentation: →/Space/PgDn, ←/PgUp, Home/End, F, P, S, T, Esc
 - Master: Right-click → Promote/Demote, Status bar crown toggle
 
@@ -146,16 +131,17 @@ All v1-v10 features remain working. This session fixed a critical hydration erro
 - EyeDropper API only in Chrome/Edge.
 - Folder upload uses `webkitdirectory` (non-standard but widely supported).
 - External stylesheets (`<link>` tags) in imported HTML are not loaded.
-- History panel may still be tight on very short viewports (under 500px).
+- History panel may be tight on very short viewports (under 500px).
+- List rendering in text edit mode (textarea) doesn't show bullets — only in display mode.
 
 ## Priority Recommendations for Next Phase
-1. **Feature**: Master slide editor mode.
-2. **Feature**: Per-slide transition UI.
-3. **Feature**: Snap to other elements' edges during resize.
-4. **Performance**: Virtualized layer list for 100+ elements.
-5. **Feature**: Keyboard-navigable layer panel.
-6. **Feature**: Custom font upload (FontFace API).
-7. **Feature**: External CSS stylesheet support in HTML import.
-8. **Feature**: Batch PNG export per slide.
-9. **Polish**: Toolbar icon grouping and labels for better discoverability.
-10. **Polish**: Animated slide thumbnail transitions.
+1. **Feature**: Slide sorter overview mode — grid view of all slides.
+2. **Feature**: Master slide editor mode — dedicated view for editing master elements.
+3. **Feature**: Per-slide transition UI — expose the `setSlideTransition` action.
+4. **Feature**: Snap to other elements' edges during resize.
+5. **Performance**: Virtualized layer list for 100+ elements.
+6. **Feature**: Keyboard-navigable layer panel (arrow keys, Enter).
+7. **Feature**: Custom font upload (FontFace API).
+8. **Feature**: External CSS stylesheet support in HTML import.
+9. **Feature**: Batch PNG export per slide.
+10. **Polish**: Element animation effects (entrance/exit animations like PPT).
