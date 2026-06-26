@@ -4,20 +4,33 @@ import React from "react"
 import { useEditor } from "@/store/editor-store"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Slider } from "@/components/ui/slider"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
-  Square, SquareEqual, Group, Ungroup,
+  Square, SquareEqual, Group, Ungroup, Droplet,
 } from "lucide-react"
 
 export function AlignmentToolbar() {
-  const { selectedIds, alignElements, distributeElements, matchSize, groupElements, ungroupElements, currentSlide } = useEditor()
+  const { selectedIds, alignElements, distributeElements, matchSize, groupElements, ungroupElements, currentSlide, updateElements, updateElement } = useEditor()
   const hasMulti = selectedIds.length >= 2
   const canDistribute = selectedIds.length >= 3
   const slide = currentSlide()
   const hasGroup = selectedIds.some((id) => slide.elements.find((e) => e.id === id)?.groupId)
+
+  // For opacity slider — use first selected element's opacity, or apply to all
+  const selectedElements = slide.elements.filter((e) => selectedIds.includes(e.id))
+  const firstOpacity = selectedElements[0]?.opacity ?? 1
+
+  function setOpacity(value: number) {
+    if (selectedIds.length === 1) {
+      updateElement(selectedIds[0], { opacity: value })
+    } else {
+      updateElements(selectedIds.map((id) => ({ id, patch: { opacity: value } })))
+    }
+  }
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -73,6 +86,23 @@ export function AlignmentToolbar() {
         <TooltipBtn label="Ungroup (Ctrl+Shift+G)" onClick={() => ungroupElements(selectedIds)} disabled={!hasGroup}>
           <Ungroup className="w-4 h-4" />
         </TooltipBtn>
+
+        {/* Opacity quick slider */}
+        <Separator orientation="vertical" className="mx-1 h-7" />
+        <div className="flex items-center gap-1.5 px-1">
+          <Droplet className="w-3.5 h-3.5 text-muted-foreground" />
+          <Slider
+            value={[firstOpacity * 100]}
+            min={0}
+            max={100}
+            step={1}
+            onValueChange={(v) => setOpacity(v[0] / 100)}
+            className="w-24"
+          />
+          <span className="text-[10px] font-mono w-8 text-muted-foreground">
+            {Math.round(firstOpacity * 100)}%
+          </span>
+        </div>
       </div>
     </TooltipProvider>
   )

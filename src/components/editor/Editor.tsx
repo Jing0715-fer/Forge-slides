@@ -11,8 +11,10 @@ import { ImportHtmlDialog, ExportDialog } from "./ImportHtmlDialog"
 import { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog"
 import { FindReplaceDialog } from "./FindReplaceDialog"
 import { TemplatePickerDialog } from "./TemplatePickerDialog"
+import { PresentationMode } from "./PresentationMode"
 import { CanvasContextMenu } from "./CanvasContextMenu"
 import { SlideContextMenu } from "./SlideContextMenu"
+import { StatusBar } from "./StatusBar"
 import { Toaster } from "@/components/ui/sonner"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -27,6 +29,7 @@ export function Editor() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
+  const [presentationOpen, setPresentationOpen] = useState(false)
   const {
     selectedIds, removeElements, duplicateElements, copy, paste,
     undo, redo, updateElements, currentSlide, slides, alignElements,
@@ -155,6 +158,13 @@ export function Editor() {
         return
       }
 
+      // F5 / Shift+F5 to start presentation
+      if (e.key === "F5") {
+        e.preventDefault()
+        setPresentationOpen(true)
+        return
+      }
+
       // Alignment shortcuts (multi-select)
       if (meta && selectedIds.length >= 2) {
         const alignMap: Record<string, Parameters<typeof alignElements>[1]> = {
@@ -240,6 +250,7 @@ export function Editor() {
         onShowShortcuts={() => setShortcutsOpen(true)}
         onFindReplace={() => setFindReplaceOpen(true)}
         onPngExport={handlePngExport}
+        onPresent={() => setPresentationOpen(true)}
       />
       {restoreData && (
         <div className="bg-primary/10 border-b border-primary/20 px-4 py-2 flex items-center gap-3 text-sm">
@@ -265,11 +276,13 @@ export function Editor() {
         </div>
         <PropertyPanel />
       </div>
+      <StatusBar />
       <ImportHtmlDialog open={importOpen} onOpenChange={setImportOpen} />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} />
       <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <FindReplaceDialog open={findReplaceOpen} onOpenChange={setFindReplaceOpen} />
       <TemplatePickerDialog open={templateOpen} onOpenChange={setTemplateOpen} />
+      <PresentationMode open={presentationOpen} onOpenChange={setPresentationOpen} />
       <CanvasContextMenu />
       <SlideContextMenu />
       <Toaster richColors position="bottom-right" />

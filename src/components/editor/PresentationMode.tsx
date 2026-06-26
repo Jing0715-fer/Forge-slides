@@ -1,0 +1,446 @@
+"use client"
+
+import React, { useEffect, useState, useCallback, useRef } from "react"
+import { useEditor, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/store/editor-store"
+import { Button } from "@/components/ui/button"
+import { ChevronLeft, ChevronRight, X, Expand, Minimize, Sparkles, Pause, Play, Clock } from "lucide-react"
+import { cn } from "@/lib/utils"
+
+type TransitionType = "none" | "fade" | "slide" | "zoom"
+
+interface Props {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+export function PresentationMode({ open, onOpenChange }: Props) {
+  const { slides, currentSlideId, setCurrentSlide } = useEditor()
+  const [index, setIndex] = useState(0)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [transition, setTransition] = useState<TransitionType>("fade")
+  const [direction, setDirection] = useState<"forward" | "backward">("forward")
+  const [animKey, setAnimKey] = useState(0)
+  const [autoPlay, setAutoPlay] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const [showControls, setShowControls] = useState(true)
+  const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Track previous values to detect transitions (React-recommended "adjust state during render" pattern)
+  const [prevOpen, setPrevOpen] = useState(false)
+  const [prevCurrentSlideId, setPrevCurrentSlideId] = useState<string | null>(null)
+
+  // When opening or when the current slide changes externally, sync the index
+  if (open && (!prevOpen || prevCurrentSlideId !== currentSlideId)) {
+    setPrevOpen(true)
+    setPrevCurrentSlideId(currentSlideId)
+    const idx = slides.findIndex((s) => s.id === currentSlideId)
+    const next = idx >= 0 ? idx : 0
+    if (next !== index) {
+      setIndex(next)
+    }
+    // Reset elapsed timer when (re)opening
+    if (!prevOpen) {
+      setElapsed(0)
+    }
+  }
+  if (!open && prevOpen) {
+    setPrevOpen(false)
+  }
+
+  const goToSlide = useCallback((newIndex: number, dir: "forward" | "backward" = "forward") => {
+    const clamped = Math.max(0, Math.min(slides.length - 1, newIndex))
+    if (clamped !== index) {
+      setDirection(dir)
+      setAnimKey((k) => k + 1)
+    }
+    setIndex(clamped)
+    if (slides[clamped]) {
+      setCurrentSlide(slides[clamped].id)
+    }
+  }, [slides, setCurrentSlide, index])
+
+  const next = useCallback(() => goToSlide(index + 1, "forward"), [goToSlide, index])
+  const prev = useCallback(() => goToSlide(index - 1, "backward"), [goToSlide, index])
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {})
+      setIsFullscreen(true)
+    } else {
+      document.exitFullscreen()
+      setIsFullscreen(false)
+    }
+  }, [])
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (!open) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
+        e.preventDefault()
+        next()
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        e.preventDefault()
+        prev()
+      } else if (e.key === "Escape") {
+        e.preventDefault()
+        if (document.fullscreenElement) {
+          document.exitFullscreen()
+        } else {
+          onOpenChange(false)
+        }
+      } else if (e.key === "Home") {
+        e.preventDefault()
+        goToSlide(0, "backward")
+      } else if (e.key === "End") {
+        e.preventDefault()
+        goToSlide(slides.length - 1, "forward")
+      } else if (e.key === "f" || e.key === "F") {
+        e.preventDefault()
+        toggleFullscreen()
+      } else if (e.key === "p" || e.key === "P") {
+        e.preventDefault()
+        setAutoPlay((v) => !v)
+      } else if (e.key === "t" || e.key === "T") {
+        e.preventDefault()
+        // Cycle through transitions
+        setTransition((t) => t === "none" ? "fade" : t === "fade" ? "slide" : t === "slide" ? "zoom" : "none")
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [open, next, prev, goToSlide, slides.length, onOpenChange, toggleFullscreen])
+
+  // Fullscreen change listener
+  useEffect(() => {
+    function onFsChange() {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+    document.addEventListener("fullscreenchange", onFsChange)
+    return () => document.removeEventListener("fullscreenchange", onFsChange)
+  }, [])
+
+  // Auto-play timer
+  useEffect(() => {
+    if (!open || !autoPlay) return
+    const interval = setInterval(() => {
+      if (index < slides.length - 1) {
+        next()
+      } else {
+        setAutoPlay(false)
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [open, autoPlay, index, slides.length, next])
+
+  // Elapsed timer (presentation stopwatch) — uses ref for start time so the interval doesn't reset
+  const startRef = useRef<number>(0)
+  useEffect(() => {
+    if (!open) return
+    startRef.current = Date.now()
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [open])
+
+  // Auto-hide controls (like video players) — show on mouse move, hide after 3s
+  useEffect(() => {
+    if (!open) return
+    function onMove() {
+      setShowControls(true)
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
+      controlsTimeoutRef.current = setTimeout(() => setShowControls(false), 3000)
+    }
+    onMove() // initial
+    window.addEventListener("mousemove", onMove)
+    return () => {
+      window.removeEventListener("mousemove", onMove)
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current)
+    }
+  }, [open])
+
+  if (!open || slides.length === 0) return null
+
+  const slide = slides[index]
+  if (!slide) return null
+
+  // Render slide content at native resolution, scaled to fit viewport
+  const slideElements = slide.elements.slice().sort((a, b) => a.zIndex - b.zIndex)
+  const scaleFactor = (typeof window !== "undefined" ? Math.min(window.innerWidth, window.innerHeight * 16 / 9) : 1280) / CANVAS_WIDTH
+
+  const transitionClass =
+    transition === "fade"
+      ? direction === "forward" ? "preso-anim-fade-in" : "preso-anim-fade-in"
+      : transition === "slide"
+        ? direction === "forward" ? "preso-anim-slide-in-right" : "preso-anim-slide-in-left"
+        : transition === "zoom"
+          ? "preso-anim-zoom-in"
+          : ""
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = s % 60
+    return `${m}:${sec.toString().padStart(2, "0")}`
+  }
+
+  return (
+    <div className="fixed inset-0 z-[10000] bg-black flex flex-col">
+      {/* Slide area */}
+      <div className="flex-1 flex items-center justify-center relative overflow-hidden">
+        <div
+          key={animKey}
+          className={cn("relative shadow-2xl", transitionClass)}
+          style={{
+            width: "min(100vw, calc(100vh * 16 / 9))",
+            height: "min(100vh, calc(100vw * 9 / 16))",
+            background: slide.background,
+            backgroundImage: slide.backgroundImage ? `url(${slide.backgroundImage})` : undefined,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        >
+          {/* Render elements scaled to fit */}
+          <div
+            className="absolute top-0 left-0 origin-top-left"
+            style={{
+              width: CANVAS_WIDTH,
+              height: CANVAS_HEIGHT,
+              transform: `scale(${scaleFactor})`,
+            }}
+          >
+            {slideElements.map((el) => (
+              <div
+                key={el.id}
+                style={{
+                  position: "absolute",
+                  left: el.x,
+                  top: el.y,
+                  width: el.width,
+                  height: el.height,
+                  transform: `rotate(${el.rotation}deg)`,
+                  opacity: el.opacity,
+                  background: el.fill,
+                  borderRadius: el.borderRadius,
+                  border: el.strokeWidth && el.stroke && el.stroke !== "transparent"
+                    ? `${el.strokeWidth}px solid ${el.stroke}`
+                    : "none",
+                  boxShadow: el.shadow
+                    ? `${el.shadowX || 0}px ${el.shadowY || 0}px ${el.shadowBlur || 24}px ${el.shadowColor || "rgba(15,23,42,0.15)"}`
+                    : "none",
+                  overflow: "hidden",
+                }}
+              >
+                {el.type === "text" && (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      fontSize: (el as any).fontSize,
+                      fontFamily: (el as any).fontFamily,
+                      fontWeight: (el as any).fontWeight,
+                      fontStyle: (el as any).fontStyle,
+                      textDecoration: (el as any).textDecoration,
+                      textAlign: (el as any).textAlign,
+                      color: (el as any).color,
+                      lineHeight: (el as any).lineHeight,
+                      letterSpacing: (el as any).letterSpacing,
+                      padding: (el as any).padding,
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: (el as any).verticalAlign === "top"
+                        ? "flex-start"
+                        : (el as any).verticalAlign === "bottom"
+                          ? "flex-end"
+                          : "center",
+                      background: "transparent",
+                      border: "none",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {(el as any).text}
+                  </div>
+                )}
+                {el.type === "ellipse" && (
+                  <div style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+                )}
+                {el.type === "image" && (
+                  <img
+                    src={(el as any).src}
+                    alt={(el as any).alt || ""}
+                    style={{ width: "100%", height: "100%", objectFit: (el as any).objectFit }}
+                  />
+                )}
+                {el.type === "triangle" && (
+                  <svg width="100%" height="100%" viewBox={`0 0 ${el.width} ${el.height}`} preserveAspectRatio="none" style={{ overflow: "visible" }}>
+                    <polygon
+                      points={`${el.width / 2},0 ${el.width},${el.height} 0,${el.height}`}
+                      fill={el.fill || "#f59e0b"}
+                      stroke={el.stroke || "transparent"}
+                      strokeWidth={el.strokeWidth || 0}
+                    />
+                  </svg>
+                )}
+                {el.type === "line" && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: el.height / 2 - (el.strokeWidth || 2) / 2,
+                      width: "100%",
+                      height: el.strokeWidth || 2,
+                      background: el.stroke || "#0f172a",
+                    }}
+                  />
+                )}
+                {el.type === "container" && (
+                  <div
+                    style={{ width: "100%", height: "100%" }}
+                    dangerouslySetInnerHTML={{ __html: (el as any).html || "" }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Navigation arrows */}
+        <button
+          onClick={prev}
+          disabled={index === 0}
+          className={cn(
+            "absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all disabled:opacity-20 disabled:cursor-not-allowed",
+            !showControls && "opacity-0 pointer-events-none",
+          )}
+          title="Previous (←)"
+        >
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+        <button
+          onClick={next}
+          disabled={index === slides.length - 1}
+          className={cn(
+            "absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all disabled:opacity-20 disabled:cursor-not-allowed",
+            !showControls && "opacity-0 pointer-events-none",
+          )}
+          title="Next (→)"
+        >
+          <ChevronRight className="w-6 h-6" />
+        </button>
+
+        {/* Click zones for navigation (left/right halves) — but skip when controls are visible to avoid blocking */}
+        {!showControls && (
+          <>
+            <div className="absolute inset-y-0 left-0 w-1/4 cursor-pointer" onClick={prev} title="Click for previous" />
+            <div className="absolute inset-y-0 right-0 w-1/4 cursor-pointer" onClick={next} title="Click for next" />
+          </>
+        )}
+
+        {/* Top-right: transition indicator badge (visible when controls visible) */}
+        {showControls && (
+          <div className="absolute top-4 right-4 flex items-center gap-2">
+            <div className="bg-black/60 backdrop-blur-sm rounded-full px-3 py-1 text-xs text-white/80 flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3" />
+              <span className="capitalize">{transition === "none" ? "No transition" : transition}</span>
+              <button
+                onClick={() => setTransition((t) => t === "none" ? "fade" : t === "fade" ? "slide" : t === "slide" ? "zoom" : "none")}
+                className="ml-1 hover:text-white text-white/60"
+                title="Cycle transition (T)"
+              >
+                ⇄
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom control bar */}
+      <div className={cn(
+        "h-12 bg-black/80 backdrop-blur-sm border-t border-white/10 flex items-center justify-between px-4 text-white transition-all duration-300",
+        !showControls && "opacity-0 translate-y-full pointer-events-none",
+      )}>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium tabular-nums">
+            {index + 1} / {slides.length}
+          </span>
+          <span className="text-xs text-white/60 truncate max-w-xs">{slide.name}</span>
+          <span className="text-xs text-white/40 flex items-center gap-1 tabular-nums">
+            <Clock className="w-3 h-3" />
+            {formatTime(elapsed)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Transition selector */}
+          <div className="flex items-center gap-0.5 bg-white/5 rounded-md p-0.5 mr-2">
+            {(["none", "fade", "slide", "zoom"] as TransitionType[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTransition(t)}
+                className={cn(
+                  "px-2 py-1 text-[10px] uppercase rounded transition-colors",
+                  transition === t ? "bg-white/20 text-white" : "text-white/50 hover:text-white/80",
+                )}
+                title={`${t === "none" ? "No" : t.charAt(0).toUpperCase() + t.slice(1)} transition`}
+              >
+                {t === "none" ? "Off" : t}
+              </button>
+            ))}
+          </div>
+          {/* Auto-play toggle */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "gap-1.5",
+              autoPlay ? "text-primary bg-primary/10" : "text-white hover:bg-white/10",
+            )}
+            onClick={() => setAutoPlay((v) => !v)}
+            title="Auto-play (P)"
+          >
+            {autoPlay ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            {autoPlay ? "Pause" : "Auto"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-white hover:bg-white/10 gap-1.5"
+            onClick={toggleFullscreen}
+            title="Toggle fullscreen (F)"
+          >
+            {isFullscreen ? <Minimize className="w-4 h-4" /> : <Expand className="w-4 h-4" />}
+            {isFullscreen ? "Exit" : "Fullscreen"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-white hover:bg-white/10 gap-1.5"
+            onClick={() => onOpenChange(false)}
+            title="Exit presentation (Esc)"
+          >
+            <X className="w-4 h-4" />
+            Exit
+          </Button>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="h-1 bg-white/10">
+        <div
+          className="h-full bg-primary transition-all duration-300 ease-out"
+          style={{ width: `${((index + 1) / slides.length) * 100}%` }}
+        />
+      </div>
+
+      {/* Auto-play progress indicator (thin bar that fills over 5s) */}
+      {autoPlay && (
+        <div className="h-0.5 bg-white/5 absolute bottom-0 left-0 right-0">
+          <div
+            key={index}
+            className="h-full bg-primary/80"
+            style={{ animation: "preso-autoplay-fill 5s linear forwards" }}
+          />
+        </div>
+      )}
+    </div>
+  )
+}

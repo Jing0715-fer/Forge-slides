@@ -1,0 +1,1002 @@
+     1→"use client"
+     2→
+     3→import { create } from "zustand"
+     4→import type {
+     5→  EditorElement,
+     6→  Slide,
+     7→  TextElement,
+     8→  ShapeElement,
+     9→  ImageElement,
+    10→  ContainerElement,
+    11→  ElementType,
+    12→} from "@/types/editor"
+    13→import { v4 as uuid } from "uuid"
+    14→
+    15→// ---------- Canvas configuration ----------
+    16→export const CANVAS_WIDTH = 1280
+    17→export const CANVAS_HEIGHT = 720
+    18→export const SNAP_THRESHOLD = 6 // px (canvas space)
+    19→
+    20→// ---------- Element factories ----------
+    21→function baseElement(
+    22→  type: ElementType,
+    23→  partial: Partial<EditorElement>,
+    24→): EditorElement {
+    25→  return {
+    26→    id: uuid(),
+    27→    type,
+    28→    name: type.charAt(0).toUpperCase() + type.slice(1),
+    29→    x: 100,
+    30→    y: 100,
+    31→    width: 240,
+    32→    height: 120,
+    33→    rotation: 0,
+    34→    opacity: 1,
+    35→    visible: true,
+    36→    locked: false,
+    37→    zIndex: 0,
+    38→    fill: "#ffffff",
+    39→    stroke: "#0f172a",
+    40→    strokeWidth: 0,
+    41→    borderRadius: 0,
+    42→    shadow: false,
+    43→    shadowColor: "rgba(15, 23, 42, 0.15)",
+    44→    shadowBlur: 24,
+    45→    shadowX: 0,
+    46→    shadowY: 8,
+    47→    ...partial,
+    48→  } as EditorElement
+    49→}
+    50→
+    51→export function createTextElement(
+    52→  partial: Partial<TextElement> = {},
+    53→): TextElement {
+    54→  return {
+    55→    ...baseElement("text", {
+    56→      width: 420,
+    57→      height: 80,
+    58→      fill: "transparent",
+    59→      stroke: "transparent",
+    60→      strokeWidth: 0,
+    61→    }),
+    62→    text: "Double click to edit text",
+    63→    fontSize: 28,
+    64→    fontFamily: "Inter, system-ui, sans-serif",
+    65→    fontWeight: "400",
+    66→    fontStyle: "normal",
+    67→    textDecoration: "none",
+    68→    textAlign: "left",
+    69→    color: "#0f172a",
+    70→    lineHeight: 1.4,
+    71→    letterSpacing: 0,
+    72→    verticalAlign: "middle",
+    73→    autoSize: false,
+    74→    padding: 8,
+    75→    name: "Text",
+    76→    ...partial,
+    77→  } as TextElement
+    78→}
+    79→
+    80→export function createShapeElement(
+    81→  shape: "rect" | "ellipse" | "triangle" | "line",
+    82→  partial: Partial<ShapeElement> = {},
+    83→): ShapeElement {
+    84→  const defaults: Record<string, Partial<ShapeElement>> = {
+    85→    rect: { width: 280, height: 180, fill: "#3b82f6", borderRadius: 12 },
+    86→    ellipse: { width: 220, height: 220, fill: "#10b981" },
+    87→    triangle: { width: 240, height: 220, fill: "#f59e0b" },
+    88→    line: {
+    89→      width: 280,
+    90→      height: 0,
+    91→      fill: "transparent",
+    92→      stroke: "#0f172a",
+    93→      strokeWidth: 3,
+    94→    },
+    95→  }
+    96→  return {
+    97→    ...(baseElement(shape, defaults[shape]) as ShapeElement),
+    98→    name: shape.charAt(0).toUpperCase() + shape.slice(1),
+    99→    ...partial,
+   100→  } as ShapeElement
+   101→}
+   102→
+   103→export function createImageElement(
+   104→  src: string,
+   105→  partial: Partial<ImageElement> = {},
+   106→): ImageElement {
+   107→  return {
+   108→    ...(baseElement("image", {
+   109→      width: 360,
+   110→      height: 240,
+   111→      fill: "transparent",
+   112→      stroke: "transparent",
+   113→      strokeWidth: 0,
+   114→    }) as ImageElement),
+   115→    src,
+   116→    alt: "Image",
+   117→    objectFit: "cover",
+   118→    name: "Image",
+   119→    ...partial,
+   120→  } as ImageElement
+   121→}
+   122→
+   123→export function createContainerElement(
+   124→  html: string,
+   125→  partial: Partial<ContainerElement> = {},
+   126→): ContainerElement {
+   127→  return {
+   128→    ...(baseElement("container", {
+   129→      width: 480,
+   130→      height: 320,
+   131→      fill: "transparent",
+   132→      stroke: "transparent",
+   133→      strokeWidth: 0,
+   134→    }) as ContainerElement),
+   135→    html,
+   136→    name: "HTML",
+   137→    ...partial,
+   138→  } as ContainerElement
+   139→}
+   140→
+   141→// ---------- Default slide ----------
+   142→function defaultSlide(): Slide {
+   143→  const title = createTextElement({
+   144→    x: 90,
+   145→    y: 90,
+   146→    width: 1100,
+   147→    height: 96,
+   148→    text: "Welcome to SlideForge",
+   149→    fontSize: 64,
+   150→    fontWeight: "700",
+   151→    color: "#0f172a",
+   152→    textAlign: "left",
+   153→    verticalAlign: "middle",
+   154→    name: "Title",
+   155→  })
+   156→  const subtitle = createTextElement({
+   157→    x: 92,
+   158→    y: 200,
+   159→    width: 900,
+   160→    height: 56,
+   161→    text: "A PowerPoint-like HTML editor for fine-tuning AI-generated slides.",
+   162→    fontSize: 24,
+   163→    fontWeight: "400",
+   164→    color: "#475569",
+   165→    textAlign: "left",
+   166→    verticalAlign: "middle",
+   167→    name: "Subtitle",
+   168→  })
+   169→  const card1 = createShapeElement("rect", {
+   170→    x: 90,
+   171→    y: 320,
+   172→    width: 340,
+   173→    height: 240,
+   174→    fill: "#eef2ff",
+   175→    stroke: "#c7d2fe",
+   176→    strokeWidth: 1,
+   177→    borderRadius: 16,
+   178→    shadow: true,
+   179→    name: "Card A",
+   180→  })
+   181→  const card2 = createShapeElement("rect", {
+   182→    x: 470,
+   183→    y: 320,
+   184→    width: 340,
+   185→    height: 240,
+   186→    fill: "#ecfeff",
+   187→    stroke: "#a5f3fc",
+   188→    strokeWidth: 1,
+   189→    borderRadius: 16,
+   190→    shadow: true,
+   191→    name: "Card B",
+   192→  })
+   193→  const card3 = createShapeElement("rect", {
+   194→    x: 850,
+   195→    y: 320,
+   196→    width: 340,
+   197→    height: 240,
+   198→    fill: "#fef3c7",
+   199→    stroke: "#fde68a",
+   200→    strokeWidth: 1,
+   201→    borderRadius: 16,
+   202→    shadow: true,
+   203→    name: "Card C",
+   204→  })
+   205→  const label1 = createTextElement({
+   206→    x: 110,
+   207→    y: 360,
+   208→    width: 300,
+   209→    height: 40,
+   210→    text: "Drag & Snap",
+   211→    fontSize: 22,
+   212→    fontWeight: "600",
+   213→    color: "#1e293b",
+   214→    textAlign: "left",
+   215→    verticalAlign: "middle",
+   216→    name: "Label A",
+   217→  })
+   218→  const label2 = createTextElement({
+   219→    x: 490,
+   220→    y: 360,
+   221→    width: 300,
+   222→    height: 40,
+   223→    text: "Resize & Rotate",
+   224→    fontSize: 22,
+   225→    fontWeight: "600",
+   226→    color: "#1e293b",
+   227→    textAlign: "left",
+   228→    verticalAlign: "middle",
+   229→    name: "Label B",
+   230→  })
+   231→  const label3 = createTextElement({
+   232→    x: 870,
+   233→    y: 360,
+   234→    width: 300,
+   235→    height: 40,
+   236→    text: "Export HTML",
+   237→    fontSize: 22,
+   238→    fontWeight: "600",
+   239→    color: "#1e293b",
+   240→    textAlign: "left",
+   241→    verticalAlign: "middle",
+   242→    name: "Label C",
+   243→  })
+   244→  const body1 = createTextElement({
+   245→    x: 110,
+   246→    y: 420,
+   247→    width: 300,
+   248→    height: 110,
+   249→    text: "Move elements and they snap to alignment guides automatically — just like PowerPoint.",
+   250→    fontSize: 16,
+   251→    fontWeight: "400",
+   252→    color: "#475569",
+   253→    textAlign: "left",
+   254→    verticalAlign: "top",
+   255→    lineHeight: 1.5,
+   256→    name: "Body A",
+   257→  })
+   258→  const body2 = createTextElement({
+   259→    x: 490,
+   260→    y: 420,
+   261→    width: 300,
+   262→    height: 110,
+   263→    text: "Eight resize handles plus a rotation grip let you fine-tune any object precisely.",
+   264→    fontSize: 16,
+   265→    fontWeight: "400",
+   266→    color: "#475569",
+   267→    textAlign: "left",
+   268→    verticalAlign: "top",
+   269→    lineHeight: 1.5,
+   270→    name: "Body B",
+   271→  })
+   272→  const body3 = createTextElement({
+   273→    x: 870,
+   274→    y: 420,
+   275→    width: 300,
+   276→    height: 110,
+   277→    text: "Edit AI-generated HTML in place, then export clean production-ready markup.",
+   278→    fontSize: 16,
+   279→    fontWeight: "400",
+   280→    color: "#475569",
+   281→    textAlign: "left",
+   282→    verticalAlign: "top",
+   283→    lineHeight: 1.5,
+   284→    name: "Body C",
+   285→  })
+   286→  const elements: EditorElement[] = [
+   287→    title,
+   288→    subtitle,
+   289→    card1,
+   290→    card2,
+   291→    card3,
+   292→    label1,
+   293→    label2,
+   294→    label3,
+   295→    body1,
+   296→    body2,
+   297→    body3,
+   298→  ].map((el, i) => ({ ...el, zIndex: i }))
+   299→
+   300→  return {
+   301→    id: uuid(),
+   302→    name: "Slide 1",
+   303→    background: "#ffffff",
+   304→    elements,
+   305→  }
+   306→}
+   307→
+   308→// ---------- Store types ----------
+   309→interface EditorState {
+   310→  slides: Slide[]
+   311→  currentSlideId: string
+   312→  selectedIds: string[]
+   313→  clipboard: EditorElement[]
+   314→  // history
+   315→  past: Slide[][]
+   316→  future: Slide[][]
+   317→  // canvas
+   318→  zoom: number
+   319→  showGrid: boolean
+   320→  showGuides: boolean
+   321→  // editing
+   322→  editingId: string | null
+   323→  // actions
+   324→  currentSlide: () => Slide
+   325→  setSelected: (ids: string[]) => void
+   326→  toggleSelected: (id: string) => void
+   327→  clearSelection: () => void
+   328→  setZoom: (z: number) => void
+   329→  toggleGrid: () => void
+   330→  toggleGuides: () => void
+   331→  setEditing: (id: string | null) => void
+   332→  // mutations
+   333→  addElement: (el: EditorElement) => void
+   334→  updateElement: (id: string, patch: Partial<EditorElement>) => void
+   335→  updateElements: (
+   336→    updates: { id: string; patch: Partial<EditorElement> }[],
+   337→  ) => void
+   338→  removeElements: (ids: string[]) => void
+   339→  duplicateElements: (ids: string[]) => void
+   340→  bringForward: (id: string) => void
+   341→  sendBackward: (id: string) => void
+   342→  bringToFront: (id: string) => void
+   343→  sendToBack: (id: string) => void
+   344→  // alignment (multi-selection)
+   345→  alignElements: (
+   346→    ids: string[],
+   347→    mode:
+   348→      | "left"
+   349→      | "centerH"
+   350→      | "right"
+   351→      | "top"
+   352→      | "middle"
+   353→      | "bottom",
+   354→  ) => void
+   355→  distributeElements: (ids: string[], axis: "horizontal" | "vertical") => void
+   356→  matchSize: (ids: string[], dimension: "width" | "height" | "both") => void
+   357→  // grouping
+   358→  groupElements: (ids: string[]) => void
+   359→  ungroupElements: (ids: string[]) => void
+   360→  // slide background image
+   361→  setSlideBackgroundImage: (id: string, src: string | null) => void
+   362→  // slides
+   363→  addSlide: () => void
+   364→  duplicateSlide: (id: string) => void
+   365→  removeSlide: (id: string) => void
+   366→  setCurrentSlide: (id: string) => void
+   367→  reorderSlides: (from: number, to: number) => void
+   368→  setSlideBackground: (id: string, bg: string) => void
+   369→  setSlideName: (id: string, name: string) => void
+   370→  // clipboard
+   371→  copy: (ids: string[]) => void
+   372→  paste: () => void
+   373→  // history
+   374→  undo: () => void
+   375→  redo: () => void
+   376→  // import / replace
+   377→  replaceSlides: (slides: Slide[]) => void
+   378→  reset: () => void
+   379→}
+   380→
+   381→function snapshot(slides: Slide[]): Slide[][] {
+   382→  // Deep clone via structuredClone
+   383→  return [structuredClone(slides)]
+   384→}
+   385→
+   386→function reindex(elements: EditorElement[]): EditorElement[] {
+   387→  return elements
+   388→    .slice()
+   389→    .sort((a, b) => a.zIndex - b.zIndex)
+   390→    .map((el, i) => ({ ...el, zIndex: i }))
+   391→}
+   392→
+   393→export const useEditor = create<EditorState>((set, get) => ({
+   394→  slides: [defaultSlide()],
+   395→  currentSlideId: "",
+   396→  selectedIds: [],
+   397→  clipboard: [],
+   398→  past: [],
+   399→  future: [],
+   400→  zoom: 0.62,
+   401→  showGrid: false,
+   402→  showGuides: true,
+   403→  editingId: null,
+   404→
+   405→  currentSlide: () => {
+   406→    const state = get()
+   407→    const id = state.currentSlideId || state.slides[0]?.id
+   408→    return state.slides.find((s) => s.id === id) ?? state.slides[0]
+   409→  },
+   410→
+   411→  setSelected: (ids) => set({ selectedIds: ids, editingId: null }),
+   412→  toggleSelected: (id) =>
+   413→    set((s) => ({
+   414→      selectedIds: s.selectedIds.includes(id)
+   415→        ? s.selectedIds.filter((x) => x !== id)
+   416→        : [...s.selectedIds, id],
+   417→      editingId: null,
+   418→    })),
+   419→  clearSelection: () => set({ selectedIds: [], editingId: null }),
+   420→  setZoom: (z) => set({ zoom: Math.min(2, Math.max(0.2, z)) }),
+   421→  toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
+   422→  toggleGuides: () => set((s) => ({ showGuides: !s.showGuides })),
+   423→  setEditing: (id) => set({ editingId: id }),
+   424→
+   425→  addElement: (el) => {
+   426→    set((s) => {
+   427→      const past = [...s.past, ...snapshot(s.slides)]
+   428→      const slides = s.slides.map((slide) => {
+   429→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   430→        const maxZ = slide.elements.reduce(
+   431→          (m, e) => Math.max(m, e.zIndex),
+   432→          -1,
+   433→        )
+   434→        return {
+   435→          ...slide,
+   436→          elements: reindex([...slide.elements, { ...el, zIndex: maxZ + 1 }]),
+   437→        }
+   438→      })
+   439→      return {
+   440→        slides,
+   441→        past: past.slice(-50),
+   442→        future: [],
+   443→        selectedIds: [el.id],
+   444→        editingId: null,
+   445→      }
+   446→    })
+   447→  },
+   448→
+   449→  updateElement: (id, patch) => {
+   450→    set((s) => {
+   451→      const slides = s.slides.map((slide) => {
+   452→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   453→        return {
+   454→          ...slide,
+   455→          elements: slide.elements.map((el) =>
+   456→            el.id === id ? ({ ...el, ...patch } as EditorElement) : el,
+   457→          ),
+   458→        }
+   459→      })
+   460→      return { slides }
+   461→    })
+   462→  },
+   463→
+   464→  updateElements: (updates) => {
+   465→    set((s) => {
+   466→      const slides = s.slides.map((slide) => {
+   467→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   468→        return {
+   469→          ...slide,
+   470→          elements: slide.elements.map((el) => {
+   471→            const u = updates.find((x) => x.id === el.id)
+   472→            return u ? ({ ...el, ...u.patch } as EditorElement) : el
+   473→          }),
+   474→        }
+   475→      })
+   476→      return { slides }
+   477→    })
+   478→  },
+   479→
+   480→  removeElements: (ids) => {
+   481→    set((s) => {
+   482→      const past = [...s.past, ...snapshot(s.slides)]
+   483→      const slides = s.slides.map((slide) => {
+   484→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   485→        return {
+   486→          ...slide,
+   487→          elements: reindex(
+   488→            slide.elements.filter((el) => !ids.includes(el.id)),
+   489→          ),
+   490→        }
+   491→      })
+   492→      return {
+   493→        slides,
+   494→        past: past.slice(-50),
+   495→        future: [],
+   496→        selectedIds: [],
+   497→        editingId: null,
+   498→      }
+   499→    })
+   500→  },
+   501→
+   502→  duplicateElements: (ids) => {
+   503→    set((s) => {
+   504→      const past = [...s.past, ...snapshot(s.slides)]
+   505→      const slides = s.slides.map((slide) => {
+   506→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   507→        const toDup = slide.elements.filter((el) => ids.includes(el.id))
+   508→        const maxZ = slide.elements.reduce(
+   509→          (m, e) => Math.max(m, e.zIndex),
+   510→          -1,
+   511→        )
+   512→        const dups: EditorElement[] = toDup.map((el, i) => ({
+   513→          ...(structuredClone(el) as EditorElement),
+   514→          id: uuid(),
+   515→          x: el.x + 24,
+   516→          y: el.y + 24,
+   517→          zIndex: maxZ + 1 + i,
+   518→          name: `${el.name} copy`,
+   519→        }))
+   520→        return {
+   521→          ...slide,
+   522→          elements: reindex([...slide.elements, ...dups]),
+   523→        }
+   524→      })
+   525→      const current = slides.find(
+   526→        (sl) => sl.id === (s.currentSlideId || s.slides[0]?.id),
+   527→      )
+   528→      const newIds = current?.elements
+   529→        .filter((e) => !s.slides.flatMap((sl) => sl.elements).some((x) => x.id === e.id))
+   530→        .map((e) => e.id) ?? []
+   531→      return {
+   532→        slides,
+   533→        past: past.slice(-50),
+   534→        future: [],
+   535→        selectedIds: newIds,
+   536→      }
+   537→    })
+   538→  },
+   539→
+   540→  bringForward: (id) => {
+   541→    set((s) => {
+   542→      const slides = s.slides.map((slide) => {
+   543→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   544→        const elements = slide.elements.slice().sort((a, b) => a.zIndex - b.zIndex)
+   545→        const idx = elements.findIndex((e) => e.id === id)
+   546→        if (idx < 0 || idx === elements.length - 1) return slide
+   547→        ;[elements[idx], elements[idx + 1]] = [elements[idx + 1], elements[idx]]
+   548→        return {
+   549→          ...slide,
+   550→          elements: reindex(elements),
+   551→        }
+   552→      })
+   553→      return { slides }
+   554→    })
+   555→  },
+   556→
+   557→  sendBackward: (id) => {
+   558→    set((s) => {
+   559→      const slides = s.slides.map((slide) => {
+   560→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   561→        const elements = slide.elements.slice().sort((a, b) => a.zIndex - b.zIndex)
+   562→        const idx = elements.findIndex((e) => e.id === id)
+   563→        if (idx <= 0) return slide
+   564→        ;[elements[idx], elements[idx - 1]] = [elements[idx - 1], elements[idx]]
+   565→        return {
+   566→          ...slide,
+   567→          elements: reindex(elements),
+   568→        }
+   569→      })
+   570→      return { slides }
+   571→    })
+   572→  },
+   573→
+   574→  bringToFront: (id) => {
+   575→    set((s) => {
+   576→      const slides = s.slides.map((slide) => {
+   577→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   578→        const elements = slide.elements.slice().sort((a, b) => a.zIndex - b.zIndex)
+   579→        const idx = elements.findIndex((e) => e.id === id)
+   580→        if (idx < 0) return slide
+   581→        const [el] = elements.splice(idx, 1)
+   582→        elements.push(el)
+   583→        return {
+   584→          ...slide,
+   585→          elements: reindex(elements),
+   586→        }
+   587→      })
+   588→      return { slides }
+   589→    })
+   590→  },
+   591→
+   592→  sendToBack: (id) => {
+   593→    set((s) => {
+   594→      const slides = s.slides.map((slide) => {
+   595→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   596→        const elements = slide.elements.slice().sort((a, b) => a.zIndex - b.zIndex)
+   597→        const idx = elements.findIndex((e) => e.id === id)
+   598→        if (idx < 0) return slide
+   599→        const [el] = elements.splice(idx, 1)
+   600→        elements.unshift(el)
+   601→        return {
+   602→          ...slide,
+   603→          elements: reindex(elements),
+   604→        }
+   605→      })
+   606→      return { slides }
+   607→    })
+   608→  },
+   609→
+   610→  alignElements: (ids, mode) => {
+   611→    set((s) => {
+   612→      if (ids.length < 2) return s
+   613→      const past = [...s.past, ...snapshot(s.slides)]
+   614→      const slides = s.slides.map((slide) => {
+   615→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   616→        const targets = slide.elements.filter((e) => ids.includes(e.id))
+   617→        if (targets.length < 2) return slide
+   618→        // Compute reference bounds based on mode
+   619→        const minLeft = Math.min(...targets.map((e) => e.x))
+   620→        const maxRight = Math.max(...targets.map((e) => e.x + e.width))
+   621→        const minTop = Math.min(...targets.map((e) => e.y))
+   622→        const maxBottom = Math.max(...targets.map((e) => e.y + e.height))
+   623→        const centerHX = (minLeft + maxRight) / 2
+   624→        const centerHY = (minTop + maxBottom) / 2
+   625→        const elements = slide.elements.map((el) => {
+   626→          if (!ids.includes(el.id)) return el
+   627→          let patch: Partial<EditorElement> = {}
+   628→          switch (mode) {
+   629→            case "left":
+   630→              patch = { x: minLeft }
+   631→              break
+   632→            case "centerH":
+   633→              patch = { x: centerHX - el.width / 2 }
+   634→              break
+   635→            case "right":
+   636→              patch = { x: maxRight - el.width }
+   637→              break
+   638→            case "top":
+   639→              patch = { y: minTop }
+   640→              break
+   641→            case "middle":
+   642→              patch = { y: centerHY - el.height / 2 }
+   643→              break
+   644→            case "bottom":
+   645→              patch = { y: maxBottom - el.height }
+   646→              break
+   647→          }
+   648→          return { ...el, ...patch } as EditorElement
+   649→        })
+   650→        return { ...slide, elements }
+   651→      })
+   652→      return { slides, past: past.slice(-50), future: [] }
+   653→    })
+   654→  },
+   655→
+   656→  distributeElements: (ids, axis) => {
+   657→    set((s) => {
+   658→      if (ids.length < 3) return s
+   659→      const past = [...s.past, ...snapshot(s.slides)]
+   660→      const slides = s.slides.map((slide) => {
+   661→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   662→        let targets = slide.elements.filter((e) => ids.includes(e.id))
+   663→        if (targets.length < 3) return slide
+   664→        // Sort by position along axis
+   665→        if (axis === "horizontal") {
+   666→          targets = targets.slice().sort((a, b) => a.x - b.x)
+   667→          const first = targets[0]
+   668→          const last = targets[targets.length - 1]
+   669→          const totalSpan = last.x + last.width - first.x
+   670→          const totalSize = targets.reduce((sum, e) => sum + e.width, 0)
+   671→          const gap = (totalSpan - totalSize) / (targets.length - 1)
+   672→          let cursor = first.x
+   673→          const updates = new Map<string, number>()
+   674→          for (const t of targets) {
+   675→            updates.set(t.id, cursor)
+   676→            cursor += t.width + gap
+   677→          }
+   678→          return {
+   679→            ...slide,
+   680→            elements: slide.elements.map((el) =>
+   681→              updates.has(el.id) ? { ...el, x: updates.get(el.id)! } : el,
+   682→            ),
+   683→          }
+   684→        } else {
+   685→          targets = targets.slice().sort((a, b) => a.y - b.y)
+   686→          const first = targets[0]
+   687→          const last = targets[targets.length - 1]
+   688→          const totalSpan = last.y + last.height - first.y
+   689→          const totalSize = targets.reduce((sum, e) => sum + e.height, 0)
+   690→          const gap = (totalSpan - totalSize) / (targets.length - 1)
+   691→          let cursor = first.y
+   692→          const updates = new Map<string, number>()
+   693→          for (const t of targets) {
+   694→            updates.set(t.id, cursor)
+   695→            cursor += t.height + gap
+   696→          }
+   697→          return {
+   698→            ...slide,
+   699→            elements: slide.elements.map((el) =>
+   700→              updates.has(el.id) ? { ...el, y: updates.get(el.id)! } : el,
+   701→            ),
+   702→          }
+   703→        }
+   704→      })
+   705→      return { slides, past: past.slice(-50), future: [] }
+   706→    })
+   707→  },
+   708→
+   709→  matchSize: (ids, dimension) => {
+   710→    set((s) => {
+   711→      if (ids.length < 2) return s
+   712→      const past = [...s.past, ...snapshot(s.slides)]
+   713→      const slides = s.slides.map((slide) => {
+   714→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   715→        const targets = slide.elements.filter((e) => ids.includes(e.id))
+   716→        if (targets.length < 2) return slide
+   717→        // Use first selected as reference
+   718→        const ref = targets[0]
+   719→        const elements = slide.elements.map((el) => {
+   720→          if (!ids.includes(el.id)) return el
+   721→          const patch: Partial<EditorElement> = {}
+   722→          if (dimension === "width" || dimension === "both") patch.width = ref.width
+   723→          if (dimension === "height" || dimension === "both") patch.height = ref.height
+   724→          return { ...el, ...patch } as EditorElement
+   725→        })
+   726→        return { ...slide, elements }
+   727→      })
+   728→      return { slides, past: past.slice(-50), future: [] }
+   729→    })
+   730→  },
+   731→
+   732→  groupElements: (ids) => {
+   733→    set((s) => {
+   734→      if (ids.length < 2) return s
+   735→      const past = [...s.past, ...snapshot(s.slides)]
+   736→      const groupId = uuid()
+   737→      const slides = s.slides.map((slide) => {
+   738→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   739→        return {
+   740→          ...slide,
+   741→          elements: slide.elements.map((el) =>
+   742→            ids.includes(el.id) ? ({ ...el, groupId } as EditorElement) : el,
+   743→          ),
+   744→        }
+   745→      })
+   746→      return { slides, past: past.slice(-50), future: [] }
+   747→    })
+   748→  },
+   749→
+   750→  ungroupElements: (ids) => {
+   751→    set((s) => {
+   752→      const past = [...s.past, ...snapshot(s.slides)]
+   753→      const slides = s.slides.map((slide) => {
+   754→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   755→        // Get the groupIds of the selected elements
+   756→        const selectedGroups = new Set(
+   757→          slide.elements
+   758→            .filter((el) => ids.includes(el.id) && el.groupId)
+   759→            .map((el) => el.groupId!),
+   760→        )
+   761→        if (selectedGroups.size === 0) return slide
+   762→        return {
+   763→          ...slide,
+   764→          elements: slide.elements.map((el) =>
+   765→            el.groupId && selectedGroups.has(el.groupId)
+   766→              ? ({ ...el, groupId: undefined } as EditorElement)
+   767→              : el,
+   768→          ),
+   769→        }
+   770→      })
+   771→      return { slides, past: past.slice(-50), future: [] }
+   772→    })
+   773→  },
+   774→
+   775→  setSlideBackgroundImage: (id, src) => {
+   776→    set((s) => {
+   777→      const past = [...s.past, ...snapshot(s.slides)]
+   778→      const slides = s.slides.map((sl) =>
+   779→        sl.id === id ? { ...sl, backgroundImage: src } : sl,
+   780→      )
+   781→      return { slides, past: past.slice(-50), future: [] }
+   782→    })
+   783→  },
+   784→
+   785→  addSlide: () => {
+   786→    set((s) => {
+   787→      const past = [...s.past, ...snapshot(s.slides)]
+   788→      const newSlide: Slide = {
+   789→        id: uuid(),
+   790→        name: `Slide ${s.slides.length + 1}`,
+   791→        background: "#ffffff",
+   792→        elements: [],
+   793→      }
+   794→      return {
+   795→        slides: [...s.slides, newSlide],
+   796→        currentSlideId: newSlide.id,
+   797→        selectedIds: [],
+   798→        past: past.slice(-50),
+   799→        future: [],
+   800→      }
+   801→    })
+   802→  },
+   803→
+   804→  duplicateSlide: (id) => {
+   805→    set((s) => {
+   806→      const past = [...s.past, ...snapshot(s.slides)]
+   807→      const idx = s.slides.findIndex((sl) => sl.id === id)
+   808→      if (idx < 0) return s
+   809→      const original = s.slides[idx]
+   810→      const copy: Slide = {
+   811→        ...structuredClone(original),
+   812→        id: uuid(),
+   813→        name: `${original.name} copy`,
+   814→        elements: original.elements.map((el) => ({
+   815→          ...(structuredClone(el) as EditorElement),
+   816→          id: uuid(),
+   817→        })),
+   818→      }
+   819→      const slides = [...s.slides]
+   820→      slides.splice(idx + 1, 0, copy)
+   821→      return {
+   822→        slides,
+   823→        currentSlideId: copy.id,
+   824→        selectedIds: [],
+   825→        past: past.slice(-50),
+   826→        future: [],
+   827→      }
+   828→    })
+   829→  },
+   830→
+   831→  removeSlide: (id) => {
+   832→    set((s) => {
+   833→      if (s.slides.length <= 1) return s
+   834→      const past = [...s.past, ...snapshot(s.slides)]
+   835→      const idx = s.slides.findIndex((sl) => sl.id === id)
+   836→      const slides = s.slides.filter((sl) => sl.id !== id)
+   837→      const nextIdx = Math.max(0, idx - 1)
+   838→      return {
+   839→        slides,
+   840→        currentSlideId: slides[nextIdx].id,
+   841→        selectedIds: [],
+   842→        past: past.slice(-50),
+   843→        future: [],
+   844→      }
+   845→    })
+   846→  },
+   847→
+   848→  setCurrentSlide: (id) => set({ currentSlideId: id, selectedIds: [], editingId: null }),
+   849→
+   850→  reorderSlides: (from, to) => {
+   851→    set((s) => {
+   852→      const past = [...s.past, ...snapshot(s.slides)]
+   853→      const slides = [...s.slides]
+   854→      const [moved] = slides.splice(from, 1)
+   855→      slides.splice(to, 0, moved)
+   856→      return { slides, past: past.slice(-50), future: [] }
+   857→    })
+   858→  },
+   859→
+   860→  setSlideBackground: (id, bg) => {
+   861→    set((s) => {
+   862→      const past = [...s.past, ...snapshot(s.slides)]
+   863→      const slides = s.slides.map((sl) =>
+   864→        sl.id === id ? { ...sl, background: bg } : sl,
+   865→      )
+   866→      return { slides, past: past.slice(-50), future: [] }
+   867→    })
+   868→  },
+   869→
+   870→  setSlideName: (id, name) => {
+   871→    set((s) => {
+   872→      const slides = s.slides.map((sl) =>
+   873→        sl.id === id ? { ...sl, name } : sl,
+   874→      )
+   875→      return { slides }
+   876→    })
+   877→  },
+   878→
+   879→  copy: (ids) => {
+   880→    set((s) => {
+   881→      const slide = s.slides.find(
+   882→        (sl) => sl.id === (s.currentSlideId || s.slides[0]?.id),
+   883→      )
+   884→      if (!slide) return s
+   885→      const clipboard = slide.elements.filter((el) => ids.includes(el.id))
+   886→      return { clipboard: structuredClone(clipboard) }
+   887→    })
+   888→  },
+   889→
+   890→  paste: () => {
+   891→    set((s) => {
+   892→      if (s.clipboard.length === 0) return s
+   893→      const past = [...s.past, ...snapshot(s.slides)]
+   894→      const slides = s.slides.map((slide) => {
+   895→        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+   896→        const maxZ = slide.elements.reduce(
+   897→          (m, e) => Math.max(m, e.zIndex),
+   898→          -1,
+   899→        )
+   900→        const dups: EditorElement[] = s.clipboard.map((el, i) => ({
+   901→          ...(structuredClone(el) as EditorElement),
+   902→          id: uuid(),
+   903→          x: el.x + 24,
+   904→          y: el.y + 24,
+   905→          zIndex: maxZ + 1 + i,
+   906→          name: `${el.name} copy`,
+   907→        }))
+   908→        return {
+   909→          ...slide,
+   910→          elements: reindex([...slide.elements, ...dups]),
+   911→        }
+   912→      })
+   913→      const current = slides.find(
+   914→        (sl) => sl.id === (s.currentSlideId || s.slides[0]?.id),
+   915→      )
+   916→      const newIds =
+   917→        current?.elements
+   918→          .slice(-s.clipboard.length)
+   919→          .map((e) => e.id) ?? []
+   920→      return {
+   921→        slides,
+   922→        past: past.slice(-50),
+   923→        future: [],
+   924→        selectedIds: newIds,
+   925→      }
+   926→    })
+   927→  },
+   928→
+   929→  undo: () => {
+   930→    set((s) => {
+   931→      if (s.past.length === 0) return s
+   932→      const previous = s.past[s.past.length - 1]
+   933→      const past = s.past.slice(0, -1)
+   934→      const future = [snapshot(s.slides)[0], ...s.future].slice(0, 50)
+   935→      const currentSlideId =
+   936→        previous.find((sl) => sl.id === s.currentSlideId)?.id ??
+   937→        previous[0]?.id ??
+   938→        ""
+   939→      return {
+   940→        slides: previous,
+   941→        past,
+   942→        future,
+   943→        currentSlideId,
+   944→        selectedIds: [],
+   945→        editingId: null,
+   946→      }
+   947→    })
+   948→  },
+   949→
+   950→  redo: () => {
+   951→    set((s) => {
+   952→      if (s.future.length === 0) return s
+   953→      const next = s.future[0]
+   954→      const future = s.future.slice(1)
+   955→      const past = [...s.past, ...snapshot(s.slides)].slice(-50)
+   956→      const currentSlideId =
+   957→        next.find((sl) => sl.id === s.currentSlideId)?.id ?? next[0]?.id ?? ""
+   958→      return {
+   959→        slides: next,
+   960→        past,
+   961→        future,
+   962→        currentSlideId,
+   963→        selectedIds: [],
+   964→        editingId: null,
+   965→      }
+   966→    })
+   967→  },
+   968→
+   969→  replaceSlides: (slides) => {
+   970→    set((s) => {
+   971→      const past = [...s.past, ...snapshot(s.slides)]
+   972→      return {
+   973→        slides,
+   974→        currentSlideId: slides[0]?.id ?? "",
+   975→        selectedIds: [],
+   976→        editingId: null,
+   977→        past: past.slice(-50),
+   978→        future: [],
+   979→      }
+   980→    })
+   981→  },
+   982→
+   983→  reset: () => {
+   984→    const slide = defaultSlide()
+   985→    set({
+   986→      slides: [slide],
+   987→      currentSlideId: slide.id,
+   988→      selectedIds: [],
+   989→      clipboard: [],
+   990→      past: [],
+   991→      future: [],
+   992→      editingId: null,
+   993→    })
+   994→  },
+   995→}))
+   996→
+   997→// Initialize currentSlideId after creation
+   998→const initial = useEditor.getState()
+   999→if (!initial.currentSlideId && initial.slides.length > 0) {
+  1000→  useEditor.setState({ currentSlideId: initial.slides[0].id })
+  1001→}
+  1002→

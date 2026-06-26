@@ -209,64 +209,183 @@ export function CanvasElementView({ element, selected, editing }: Props) {
         }
       } else if (drag.mode === "resize") {
         const orig = drag.originals[0]
-        let { x, y, width, height } = orig
         const handle = drag.handle!
-        const aspectRatio = orig.height > 0 ? orig.width / orig.height : 1
-        if (handle.includes("e")) width = Math.max(8, orig.width + dx)
-        if (handle.includes("s")) height = Math.max(8, orig.height + dy)
-        if (handle.includes("w")) {
-          width = Math.max(8, orig.width - dx)
-          x = orig.x + (orig.width - width)
-        }
-        if (handle.includes("n")) {
-          height = Math.max(8, orig.height - dy)
-          y = orig.y + (orig.height - height)
-        }
-        // Shift = lock aspect ratio (corner handles only)
-        if (ev.shiftKey && ["nw", "ne", "sw", "se"].includes(handle) && aspectRatio > 0) {
-          const newWFromH = height * aspectRatio
-          const newHFromW = width / aspectRatio
-          if (Math.abs(width - orig.width) > Math.abs(height - orig.height)) {
-            height = newHFromW
-            if (handle.includes("n")) y = orig.y + (orig.height - height)
-          } else {
-            width = newWFromH
-            if (handle.includes("w")) x = orig.x + (orig.width - width)
+        const isGroupResize = drag.originals.length > 1
+
+        if (isGroupResize) {
+          // --- Group resize: scale all members relative to group bounding box ---
+          // Compute original group bbox
+          const minX = Math.min(...drag.originals.map((o) => o.x))
+          const minY = Math.min(...drag.originals.map((o) => o.y))
+          const maxX = Math.max(...drag.originals.map((o) => o.x + o.width))
+          const maxY = Math.max(...drag.originals.map((o) => o.y + o.height))
+          let bx = minX, by = minY, bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY)
+          const origBx = bx, origBy = by, origBw = bw, origBh = bh
+
+          // Apply handle resize to the bounding box
+          if (handle.includes("e")) bw = Math.max(16, origBw + dx)
+          if (handle.includes("s")) bh = Math.max(16, origBh + dy)
+          if (handle.includes("w")) {
+            bw = Math.max(16, origBw - dx)
+            bx = origBx + (origBw - bw)
           }
-        }
-        const resized: Box = { x, y, width, height }
-        const edges: ("left" | "right" | "top" | "bottom")[] = []
-        if (handle.includes("w")) edges.push("left")
-        if (handle.includes("e")) edges.push("right")
-        if (handle.includes("n")) edges.push("top")
-        if (handle.includes("s")) edges.push("bottom")
-        const allGuides: GuideLine[] = []
-        if (!ev.shiftKey) {
-          for (const edge of edges) {
-            const snap = snapResize(resized, drag.others, edge)
-            if (snap.dx) {
-              if (edge === "left") {
-                const newX = x + snap.dx
-                const newWidth = width - snap.dx
-                if (newWidth >= 8) { x = newX; width = newWidth }
-              } else if (edge === "right") {
-                width = width + snap.dx
+          if (handle.includes("n")) {
+            bh = Math.max(16, origBh - dy)
+            by = origBy + (origBh - bh)
+          }
+
+          // Shift = lock aspect ratio for corner handles
+          const groupAspect = origBh > 0 ? origBw / origBh : 1
+          if (ev.shiftKey && ["nw", "ne", "sw", "se"].includes(handle) && groupAspect > 0) {
+            const newWFromH = bh * groupAspect
+            const newHFromW = bw / groupAspect
+            if (Math.abs(bw - origBw) > Math.abs(bh - origBh)) {
+              bh = newHFromW
+              if (handle.includes("n")) by = origBy + (origBh - bh)
+            } else {
+              bw = newWFromH
+              if (handle.includes("w")) bx = origBx + (origBw - bw)
+            }
+          }
+
+          // Snap the bounding box edges to other elements
+          const resizedBox: Box = { x: bx, y: by, width: bw, height: bh }
+          const edges: ("left" | "right" | "top" | "bottom")[] = []
+          if (handle.includes("w")) edges.push("left")
+          if (handle.includes("e")) edges.push("right")
+          if (handle.includes("n")) edges.push("top")
+          if (handle.includes("s")) edges.push("bottom")
+          const allGuides: GuideLine[] = []
+          if (!ev.shiftKey) {
+            for (const edge of edges) {
+              const snap = snapResize(resizedBox, drag.others, edge)
+              if (snap.dx) {
+                if (edge === "left") {
+                  const newX = bx + snap.dx
+                  const newWidth = bw - snap.dx
+                  if (newWidth >= 16) { bx = newX; bw = newWidth }
+                } else if (edge === "right") {
+                  bw = bw + snap.dx
+                }
+              }
+              if (snap.dy) {
+                if (edge === "top") {
+                  const newY = by + snap.dy
+                  const newHeight = bh - snap.dy
+                  if (newHeight >= 16) { by = newY; bh = newHeight }
+                } else if (edge === "bottom") {
+                  bh = bh + snap.dy
+                }
+              }
+              allGuides.push(...snap.guides)
+            }
+          }
+          setSnapGuides(allGuides)
+
+          // Compute scale factors (guard against divide-by-zero)
+          const scaleX = bw / origBw
+          const scaleY = bh / origBh
+          // For text properties, use geometric mean of scales for perceptual uniformity
+          const fontScale = Math.sqrt(scaleX * scaleY)
+
+          // Apply scaled transform to every group member
+          // Need to look up live elements to read text properties
+          const liveSlide = useEditor.getState().currentSlide()
+          const updates = drag.originals.map((o) => {
+            const relX = (o.x - origBx) / origBw
+            const relY = (o.y - origBy) / origBh
+            const newX = bx + relX * bw
+            const newY = by + relY * bh
+            const newW = Math.max(4, o.width * scaleX)
+            const newH = Math.max(4, o.height * scaleY)
+            const patch: Partial<EditorElement> & { fontSize?: number; letterSpacing?: number; padding?: number; strokeWidth?: number } = {
+              x: newX,
+              y: newY,
+              width: newW,
+              height: newH,
+            }
+            // Scale text properties
+            const live = liveSlide?.elements.find((el) => el.id === o.id)
+            if (live && live.type === "text") {
+              const t = live as TextElement
+              patch.fontSize = Math.max(6, Math.round(t.fontSize * fontScale))
+              if (typeof t.letterSpacing === "number" && t.letterSpacing !== 0) {
+                patch.letterSpacing = t.letterSpacing * scaleX
+              }
+              if (typeof t.padding === "number" && t.padding !== 0) {
+                patch.padding = t.padding * fontScale
               }
             }
-            if (snap.dy) {
-              if (edge === "top") {
-                const newY = y + snap.dy
-                const newHeight = height - snap.dy
-                if (newHeight >= 8) { y = newY; height = newHeight }
-              } else if (edge === "bottom") {
-                height = height + snap.dy
+            // Scale stroke width for shapes
+            if (live && (live.type === "rect" || live.type === "ellipse" || live.type === "triangle" || live.type === "line")) {
+              const s = live as ShapeElement
+              if (typeof s.strokeWidth === "number" && s.strokeWidth > 0) {
+                patch.strokeWidth = Math.max(0.5, s.strokeWidth * fontScale)
               }
             }
-            allGuides.push(...snap.guides)
+            return { id: o.id, patch: patch as Partial<EditorElement> }
+          })
+          updateElements(updates)
+        } else {
+          // --- Single element resize (original logic) ---
+          let { x, y, width, height } = orig
+          const aspectRatio = orig.height > 0 ? orig.width / orig.height : 1
+          if (handle.includes("e")) width = Math.max(8, orig.width + dx)
+          if (handle.includes("s")) height = Math.max(8, orig.height + dy)
+          if (handle.includes("w")) {
+            width = Math.max(8, orig.width - dx)
+            x = orig.x + (orig.width - width)
           }
+          if (handle.includes("n")) {
+            height = Math.max(8, orig.height - dy)
+            y = orig.y + (orig.height - height)
+          }
+          // Shift = lock aspect ratio (corner handles only)
+          if (ev.shiftKey && ["nw", "ne", "sw", "se"].includes(handle) && aspectRatio > 0) {
+            const newWFromH = height * aspectRatio
+            const newHFromW = width / aspectRatio
+            if (Math.abs(width - orig.width) > Math.abs(height - orig.height)) {
+              height = newHFromW
+              if (handle.includes("n")) y = orig.y + (orig.height - height)
+            } else {
+              width = newWFromH
+              if (handle.includes("w")) x = orig.x + (orig.width - width)
+            }
+          }
+          const resized: Box = { x, y, width, height }
+          const edges: ("left" | "right" | "top" | "bottom")[] = []
+          if (handle.includes("w")) edges.push("left")
+          if (handle.includes("e")) edges.push("right")
+          if (handle.includes("n")) edges.push("top")
+          if (handle.includes("s")) edges.push("bottom")
+          const allGuides: GuideLine[] = []
+          if (!ev.shiftKey) {
+            for (const edge of edges) {
+              const snap = snapResize(resized, drag.others, edge)
+              if (snap.dx) {
+                if (edge === "left") {
+                  const newX = x + snap.dx
+                  const newWidth = width - snap.dx
+                  if (newWidth >= 8) { x = newX; width = newWidth }
+                } else if (edge === "right") {
+                  width = width + snap.dx
+                }
+              }
+              if (snap.dy) {
+                if (edge === "top") {
+                  const newY = y + snap.dy
+                  const newHeight = height - snap.dy
+                  if (newHeight >= 8) { y = newY; height = newHeight }
+                } else if (edge === "bottom") {
+                  height = height + snap.dy
+                }
+              }
+              allGuides.push(...snap.guides)
+            }
+          }
+          setSnapGuides(allGuides)
+          updateElement(element.id, { x, y, width, height })
         }
-        setSnapGuides(allGuides)
-        updateElement(element.id, { x, y, width, height })
       } else if (drag.mode === "rotate") {
         const orig = drag.originals[0]
         const cxBox = orig.x + orig.width / 2

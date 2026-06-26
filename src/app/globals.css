@@ -264,3 +264,65 @@
   animation: drop-zone-pulse 1.2s ease-in-out infinite;
 }
 
+/* ====== Presentation Mode Slide Transitions ====== */
+@keyframes preso-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.preso-anim-fade-in {
+  animation: preso-fade-in 450ms ease-out;
+}
+
+@keyframes preso-slide-in-right {
+  from { opacity: 0; transform: translateX(60px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.preso-anim-slide-in-right {
+  animation: preso-slide-in-right 450ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes preso-slide-in-left {
+  from { opacity: 0; transform: translateX(-60px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.preso-anim-slide-in-left {
+  animation: preso-slide-in-left 450ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes preso-zoom-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+.preso-anim-zoom-in {
+  animation: preso-zoom-in 500ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Auto-play fill bar */
+@keyframes preso-autoplay-fill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+/* Slide thumbnail drop indicator */
+@keyframes drop-indicator-glow {
+  0%, 100% { box-shadow: 0 0 4px hsl(var(--primary) / 0.6); }
+  50% { box-shadow: 0 0 8px hsl(var(--primary) / 0.9); }
+}
+.slide-thumb-drop-indicator {
+  animation: drop-indicator-glow 1s ease-in-out infinite;
+}
+
+/* Contextual toolbar subtle slide-in */
+@keyframes ctx-toolbar-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ctx-toolbar-anim {
+  animation: ctx-toolbar-in 180ms ease-out;
+}
+
+/* Tabular numbers for cleaner counters */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+

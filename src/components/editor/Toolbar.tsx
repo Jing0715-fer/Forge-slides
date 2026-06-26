@@ -8,11 +8,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Type, Square, Circle, Triangle, Minus, Image as ImageIcon, Upload,
   Undo2, Redo2, Copy, Trash2, BringToFront, SendToBack,
-  ZoomIn, ZoomOut, Grid3x3, Magnet, Download, FileText, HelpCircle, Search, ImageDown,
+  ZoomIn, ZoomOut, Grid3x3, Magnet, Download, FileText, HelpCircle, Search, ImageDown, Play, Clipboard,
 } from "lucide-react"
 import { AlignmentToolbar } from "./AlignmentToolbar"
 import { TextStylePresets } from "./TextStylePresets"
 import { ThemeToggle } from "./ThemeToggle"
+import { toast } from "sonner"
 
 interface Props {
   onImportClick: () => void
@@ -21,9 +22,10 @@ interface Props {
   onShowShortcuts: () => void
   onFindReplace: () => void
   onPngExport: () => void
+  onPresent: () => void
 }
 
-export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShortcuts, onFindReplace, onPngExport }: Props) {
+export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShortcuts, onFindReplace, onPngExport, onPresent }: Props) {
   const {
     addElement, selectedIds, removeElements, duplicateElements,
     bringToFront, sendToBack, undo, redo, past, future,
@@ -90,6 +92,28 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
     a.download = "slides.html"
     a.click()
     URL.revokeObjectURL(url)
+  }
+  async function handleCopyHtml() {
+    const html = exportSlidesToHtml(slides)
+    try {
+      await navigator.clipboard.writeText(html)
+      toast.success(`Copied ${slides.length} slide${slides.length === 1 ? "" : "s"} as HTML to clipboard`)
+    } catch {
+      // Fallback for older browsers
+      const ta = document.createElement("textarea")
+      ta.value = html
+      ta.style.position = "fixed"
+      ta.style.opacity = "0"
+      document.body.appendChild(ta)
+      ta.select()
+      try {
+        document.execCommand("copy")
+        toast.success("HTML copied to clipboard")
+      } catch {
+        toast.error("Failed to copy HTML to clipboard")
+      }
+      document.body.removeChild(ta)
+    }
   }
 
   return (
@@ -188,14 +212,33 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
             <Button variant="outline" size="sm" onClick={onExportClick} className="gap-1.5 h-8">
               <Download className="w-3.5 h-3.5" /> Export HTML
             </Button>
-            <Button variant="outline" size="sm" onClick={onPdfExport} className="gap-1.5 h-8">
-              <FileText className="w-3.5 h-3.5" /> PDF
-            </Button>
-            <Button variant="outline" size="sm" onClick={onPngExport} className="gap-1.5 h-8">
-              <ImageDown className="w-3.5 h-3.5" /> PNG
-            </Button>
-            <Button size="sm" onClick={handleExport} className="gap-1.5 h-8">
-              <FileText className="w-3.5 h-3.5" /> Download
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="icon" onClick={onPdfExport} className="h-8 w-8" title="Export as PDF">
+                  <FileText className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">Export as PDF (print-ready)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="icon" onClick={onPngExport} className="h-8 w-8" title="Export current slide as PNG">
+                  <ImageDown className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">Export current slide as PNG</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="icon" onClick={handleCopyHtml} className="h-8 w-8" title="Copy HTML to clipboard">
+                  <Clipboard className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">Copy HTML to clipboard</TooltipContent>
+            </Tooltip>
+            <Separator orientation="vertical" className="h-6 mx-0.5" />
+            <Button size="sm" onClick={onPresent} className="gap-1.5 h-8 bg-primary hover:bg-primary/90 shadow-sm">
+              <Play className="w-3.5 h-3.5" /> Present
             </Button>
           </div>
         </TooltipProvider>
@@ -203,7 +246,7 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
 
       {/* Row 2: contextual toolbar (alignment + text presets) */}
       {hasSelection && (
-        <div className="h-10 border-t bg-muted/30 flex items-center px-3 gap-2 overflow-x-auto">
+        <div className="h-10 border-t bg-muted/30 flex items-center px-3 gap-2 overflow-x-auto ctx-toolbar-anim">
           <TextStylePresets />
           <Separator orientation="vertical" className="h-6" />
           <AlignmentToolbar />
