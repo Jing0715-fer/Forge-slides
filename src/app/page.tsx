@@ -1,6 +1,10 @@
 "use client"
 
+import { useState, useCallback } from "react"
 import dynamic from "next/dynamic"
+import { LandingPage } from "@/components/editor/LandingPage"
+import { loadFromLocalStorage } from "@/lib/persistence"
+import { useEditor } from "@/store/editor-store"
 
 const Editor = dynamic(() => import("@/components/editor/Editor").then((m) => m.Editor), {
   ssr: false,
@@ -14,6 +18,56 @@ const Editor = dynamic(() => import("@/components/editor/Editor").then((m) => m.
   ),
 })
 
+type View = "landing" | "editor"
+
 export default function Home() {
-  return <Editor />
+  const [view, setView] = useState<View>("landing")
+  // Check for saved session using lazy initializer (runs once on mount, no effect needed)
+  const [hasSavedSession] = useState(() => {
+    if (typeof window === "undefined") return false
+    const saved = loadFromLocalStorage()
+    return !!(saved && saved.slides.length > 0)
+  })
+  const [pendingImport, setPendingImport] = useState(false)
+  const { loadProject } = useEditor()
+
+  const handleStart = useCallback(() => {
+    setView("editor")
+  }, [])
+
+  const handleImport = useCallback(() => {
+    setPendingImport(true)
+    setView("editor")
+  }, [])
+
+  const handleRestoreSession = useCallback(() => {
+    const saved = loadFromLocalStorage()
+    if (saved) {
+      loadProject({
+        slides: saved.slides,
+        currentSlideId: saved.currentSlideId || saved.slides[0]?.id || "",
+      })
+      if (saved.masterElements) {
+        useEditor.setState({ masterElements: saved.masterElements })
+      }
+    }
+    setView("editor")
+  }, [loadProject])
+
+  const handleBackToLanding = useCallback(() => {
+    setView("landing")
+  }, [])
+
+  if (view === "landing") {
+    return (
+      <LandingPage
+        onStart={handleStart}
+        onImport={handleImport}
+        hasSavedSession={hasSavedSession}
+        onRestoreSession={handleRestoreSession}
+      />
+    )
+  }
+
+  return <Editor initialImportOpen={pendingImport} onExit={handleBackToLanding} />
 }

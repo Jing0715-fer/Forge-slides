@@ -2,48 +2,73 @@
 
 ## Project Status
 
-**Phase**: v9 — HTML file & folder import (multi-file → multi-slide)
-**Last Updated**: 2026-06-26 21:58 (Asia/Shanghai)
+**Phase**: v10 — Landing page, history timeline panel, enhanced undo/redo
+**Last Updated**: 2026-06-26 23:05 (Asia/Shanghai)
 
 SlideForge is a PowerPoint-like HTML editor for fine-tuning AI-generated slides.
 The app runs on Next.js 16 at `http://localhost:3000/` (single route `/`).
 
 ---
 
-## Current State (v9)
+## Current State (v10)
 
-All v1-v8 features remain working. This session added comprehensive HTML file and folder import support.
+All v1-v9 features remain working. This session added a beautiful landing page, a visual history timeline panel, and enhanced multi-step undo/redo with jump-to-point functionality.
 
-### Verified This Session (agent-browser + VLM, 2026-06-26 21:58)
-- **HTML File Upload**: New "File" tab in ImportHtmlDialog. Click or drag-and-drop .html/.htm files into the drop zone. Multiple files are supported — each file becomes one or more slides. Files are listed with name, filename, char count, size badge, and "first"/"last" position badges. Files can be removed individually. Verified: uploaded 3 HTML files → file list showed all 3 with "2.9 KB" total size badge and first/last badges.
-- **HTML Folder Upload**: New "Folder" tab in ImportHtmlDialog. Uses `webkitdirectory` attribute to select a folder. All .html files in the folder (and subfolders) are collected, sorted alphabetically (natural numeric sort), and become slides. Same file list UI as File tab.
-- **Multi-File Parsing**: New `parseMultipleHtmlToSlides(files: ParsedFile[])` function in `html-io.ts`. Each file is parsed independently — if a file contains multiple `<section class="slide">` elements, each becomes a separate slide. Slide names use the filename (without extension), with "(N)" suffix if a file produces multiple slides. Files are pre-sorted by the caller using natural numeric sort (so "slide-02" comes before "slide-10").
-- **Tabbed Import UI**: ImportHtmlDialog completely redesigned with 3 tabs (Paste / File / Folder), each with appropriate icons (ClipboardPaste, FileUp, FolderUp). Smart/Raw mode toggle moved below the tabs as a segmented control. Drag-and-drop zones have hover and active states. Pending files list shows file icons, names, metadata, and remove buttons.
-- **Raw Mode Multi-File**: When importing multiple files in Raw mode, each file becomes a slide with a full-canvas container element (1160×600). Uses `loadProject` to replace all slides.
-- **Verified Import**: Created 3 test HTML files (gradient title slide, agenda with white cards, dark slide with 3 colored gradient cards). Uploaded all 3 via File tab → clicked Import → toast "Imported 3 slides from 3 file(s)" → 3 slide thumbnails appeared → navigated to each slide → all elements (titles, cards, gradients, text) rendered correctly.
+### Verified This Session (agent-browser + VLM, 2026-06-26 23:05)
+- **Landing Page**: New `LandingPage` component with hero section (gradient title, badge, CTA buttons), 6 feature cards with gradient icons (Drag & Snap, Resize & Rotate, HTML Import, Layers & Groups, History Timeline, Presentation Mode), "How it works" 3-step section, and final CTA. CSS animations for entrance effects (fade-up with staggered delays). Restore session link appears when a saved session exists. ThemeToggle in header. Verified: landing page loads with hero title, feature cards visible after scroll, "Start Editing" button navigates to editor.
+- **History Timeline Panel**: New `HistoryPanel` component at the bottom of the Layers panel. Shows a vertical timeline with: future entries (redo-able, dimmed), "Current state" indicator (blue dot), and past entries (undo-able, most recent first). Each entry shows an icon, action label, and relative timestamp ("just now", "18s ago"). Includes undo/redo/clear buttons in the header. Collapsible. Verified: added 2 elements → history showed "Add element" x2 and "Replace slides" with "just now" timestamps.
+- **Labeled History Entries**: History system refactored from `Slide[][]` to `HistoryEntry[]` with `label`, `timestamp`, and `icon` fields. Each action now pushes a descriptive entry: "Add element" (Plus icon), "Delete elements" (Trash2), "Duplicate elements" (Copy), "Align elements" (AlignStartVertical), "Group elements" (Group), "Set background" (Palette), "Add slide" (Plus), "Promote to master" (Crown), etc. 21 action types mapped to labels and icons.
+- **Jump to History Point**: New `jumpToHistory(index)` store action. Click any past entry to undo to that point, or any future entry to redo to that point. Verified: clicked "Replace slides" entry → jumped back to 11 elements (original welcome slide), confirming multi-step undo works.
+- **Multi-step Undo/Redo**: Undo (Ctrl+Z) and Redo (Ctrl+Shift+Z) work across multiple steps (50-step limit). Verified: added rect (16 elements) → undo (15 elements) → redo (16 elements).
+- **Clear History**: New "Clear history" button (trash icon) in the History panel header clears all past/future entries.
+- **Home Button**: Editor header now has a "Home" button (ArrowLeft icon) that returns to the landing page. Verified: clicked Home → returned to landing page.
+- **View Routing**: `page.tsx` manages view state ("landing" vs "editor"). Landing page has "Start Editing" and "Import HTML" buttons that transition to editor. Import button opens the import dialog automatically. Restore session link loads saved project.
 
 ### Bug Fixes This Session
-- None — code was clean from v8. Lint passes with 0 errors.
+- Fixed `react-hooks/set-state-in-effect` in `page.tsx`: replaced `useEffect` + `setHasSavedSession` with lazy `useState` initializer that reads localStorage on mount.
+- Fixed `react-hooks/set-state-in-effect` in `LandingPage.tsx`: replaced `useEffect` + `setMounted` animation pattern with pure CSS animations (`landing-animate-in` class with staggered `animationDelay`).
+- Fixed History panel visibility: Layers panel needed `overflow-hidden` on the container and `min-h-0` on the ScrollArea to prevent the History panel from being pushed off-screen on short viewports.
 
 ---
 
 ## Architecture
-- **State**: Zustand store at `src/store/editor-store.ts` (includes masterElements, masterVisible, promoteToMaster, demoteFromMaster, updateMasterElement, toggleMasterVisible, setSlideNotes, setSlideTransition, loadProject).
+- **State**: Zustand store at `src/store/editor-store.ts` — now exports `HistoryEntry` type, includes `jumpToHistory`, `clearHistory` actions. History uses `HistoryEntry[]` (with label/timestamp/icon) instead of bare `Slide[][]`.
 - **Types**: `src/types/editor.ts` (Slide has notes?, transition? fields).
-- **Theming**: next-themes with `attribute="class"`, ThemeProvider in layout.tsx, ThemeToggle component.
+- **Theming**: next-themes with `attribute="class"`, ThemeProvider in layout.tsx, ThemeToggle component (used in both landing and editor).
 - **Templates**: `src/lib/templates.ts` — 7 slide templates.
-- **PNG export**: `src/lib/png-export.ts` — SVG foreignObject + canvas with CORS image handling.
+- **PNG export**: `src/lib/png-export.ts`.
 - **Alignment**: `src/lib/alignment.ts`.
-- **HTML I/O**: `src/lib/html-io.ts` — `parseHtmlToSlides` (single HTML), `parseMultipleHtmlToSlides` (NEW — multi-file), `exportSlidesToHtml` (accepts masterElements), `ParsedFile` type (NEW).
+- **HTML I/O**: `src/lib/html-io.ts` — parseHtmlToSlides, parseMultipleHtmlToSlides, exportSlidesToHtml, ParsedFile type.
 - **Project I/O**: `src/lib/project-io.ts` — SlideForge JSON project files.
 - **PDF export**: `src/lib/pdf-export.ts`.
-- **Persistence**: `src/lib/persistence.ts` (v2 format with masterElements) + `src/hooks/use-autosave.ts`.
+- **Persistence**: `src/lib/persistence.ts` (v2 format) + `src/hooks/use-autosave.ts`.
 - **Recent colors**: `src/hooks/use-recent-colors.ts`.
-- **Components**: Editor (F5 shortcut), Toolbar (ProjectMenu + Copy HTML), AlignmentToolbar (opacity slider), TextStylePresets, Canvas (renders masterElements), CanvasElement (group move + group resize), MasterElementView (read-only master renderer), LayersPanel, SlidesPanel (drag-to-reorder), PropertyPanel (wraps SpeakerNotesPanel), SpeakerNotesPanel (collapsible notes with word count), ImportHtmlDialog (REDESIGNED — 3-tab Paste/File/Folder with drag-drop + file list), ExportDialog, KeyboardShortcutsDialog (7 categories), FindReplaceDialog, TemplatePickerDialog, PresentationMode (transitions + autoplay + timer + notes overlay + master elements), ProjectMenu (JSON export/import dropdown), CanvasContextMenu (promote/demote master), SlideContextMenu, ColorSwatchPicker, GradientPicker, ThemeToggle, StatusBar (master element toggle).
+- **Components**: LandingPage (NEW), Editor (with Home button + initialImportOpen prop), Toolbar, AlignmentToolbar, TextStylePresets, Canvas, CanvasElement, MasterElementView, LayersPanel (now includes HistoryPanel), HistoryPanel (NEW — timeline with jump-to-point), SlidesPanel, PropertyPanel (wraps SpeakerNotesPanel), SpeakerNotesPanel, ImportHtmlDialog (3-tab), ExportDialog, KeyboardShortcutsDialog, FindReplaceDialog, TemplatePickerDialog, PresentationMode, ProjectMenu, CanvasContextMenu, SlideContextMenu, ColorSwatchPicker, GradientPicker, ThemeToggle, StatusBar.
+- **Page routing**: `src/app/page.tsx` manages "landing" vs "editor" view state with lazy localStorage check for saved sessions.
 
 ---
 
-## All Features (v1 through v9)
+## All Features (v1 through v10)
+
+### Landing Page (NEW in v10)
+- Hero section with gradient title, badge, and CTA buttons
+- 6 feature cards with gradient icons and descriptions
+- "How it works" 3-step visual guide
+- Final CTA section
+- Restore previous session link (when autosave exists)
+- CSS entrance animations (staggered fade-up)
+- ThemeToggle in header
+
+### History Timeline (NEW in v10)
+- Visual timeline panel at bottom of Layers panel
+- Labeled entries with icons (21 action types mapped)
+- Relative timestamps ("just now", "18s ago", "5m ago")
+- "Current state" indicator with blue dot
+- Future entries shown dimmed (redo-able)
+- Click any entry to jump to that point in history
+- Undo/Redo/Clear buttons in header
+- Collapsible panel
+- 50-step history limit
 
 ### Editing
 - PPT-like drag with smart alignment guides
@@ -69,15 +94,14 @@ All v1-v8 features remain working. This session added comprehensive HTML file an
 - Toggle master visibility (crown icon in status bar)
 - Master elements render in editor, presentation mode, and HTML export
 
-### HTML Import (significantly enhanced in v9)
-- **Paste mode**: paste HTML directly into a textarea (Smart or Raw)
-- **File upload (NEW)**: select one or more .html/.htm files via click or drag-and-drop
-- **Folder upload (NEW)**: select a folder — all HTML files become slides (sorted alphabetically)
-- **Smart mode**: extracts positioned text, shapes, images as editable elements
-- **Raw mode**: keeps HTML intact in a container (single file → current slide; multi-file → one slide per file)
-- **Multi-file parsing (NEW)**: each file can contain one or multiple `<section class="slide">` elements
-- **File list UI (NEW)**: shows filename, char count, size badge, first/last position badges, remove button
-- **Drag-and-drop (NEW)**: drop HTML files directly onto the upload zone
+### HTML Import
+- Paste mode: paste HTML directly into a textarea
+- File upload: select one or more .html/.htm files via click or drag-and-drop
+- Folder upload: select a folder — all HTML files become slides
+- Smart mode: extracts positioned text, shapes, images as editable elements
+- Raw mode: keeps HTML intact in a container
+- Multi-file parsing: each file can contain one or multiple slides
+- File list UI with metadata, remove buttons, first/last badges
 
 ### Multi-Selection
 - Align L/C/R/T/M/B, Distribute H/V, Match W/H
@@ -108,7 +132,6 @@ All v1-v8 features remain working. This session added comprehensive HTML file an
 ### Speaker Notes
 - Per-slide notes in collapsible panel (bottom of Property Panel)
 - Word count + estimated speaking time (130 wpm)
-- Debounced updates (400ms)
 - Notes overlay in presentation mode (S key to toggle)
 - Notes preserved in autosave and JSON export
 
@@ -121,7 +144,6 @@ All v1-v8 features remain working. This session added comprehensive HTML file an
 - Speaker notes overlay (S key)
 - Master elements rendered
 - Fullscreen toggle (F key)
-- Progress bar, transition selector, click zones
 
 ### Styling
 - Fill (solid/gradient), Stroke, Corner radius, Shadow, Opacity, Rotation
@@ -130,6 +152,7 @@ All v1-v8 features remain working. This session added comprehensive HTML file an
 ### UI
 - Dark mode toggle — sun/moon icons, persists via next-themes
 - Status bar — slide info, element/group/master counts, selection count, master toggle, snap/grid indicators, zoom
+- Home button in editor header (returns to landing page)
 - Smooth animations and hover effects throughout
 
 ### Slides
@@ -139,10 +162,13 @@ All v1-v8 features remain working. This session added comprehensive HTML file an
 - Searchable, lock/visibility, reorder
 
 ### History
-- Undo/Redo (50-step)
+- Undo/Redo (50-step) with labeled entries
+- Visual timeline panel with jump-to-point
+- Clear history button
 
 ### Persistence
 - Autosave (1.5s debounce) v2 format with masterElements, restore banner
+- Restore session from landing page
 
 ### Keyboard Shortcuts (48+)
 - T, Ctrl+Z/Y/C/V/D/A/S/G/H/F, F5, arrows, Shift+corner, Shift+rotate, Ctrl+Shift+L/E/R/T/M/B, ?, Esc, right-click
@@ -161,8 +187,9 @@ All v1-v8 features remain working. This session added comprehensive HTML file an
 - Clipboard API may be blocked in some browsers — Copy HTML has execCommand fallback.
 - Master elements cannot be edited directly on slides (must demote first).
 - Per-slide transition override is in the store but not yet exposed in the UI.
-- Folder upload uses `webkitdirectory` which is non-standard but widely supported (Chrome, Firefox, Edge, Safari).
-- Inline CSS in imported HTML is preserved, but external stylesheets (`<link>` tags) are not loaded — only inline styles are parsed.
+- Folder upload uses `webkitdirectory` which is non-standard but widely supported.
+- Inline CSS in imported HTML is preserved, but external stylesheets (`<link>` tags) are not loaded.
+- History panel may be hard to see on very short viewports (under 500px height) — the Layers panel ScrollArea takes most of the space.
 
 ## Priority Recommendations for Next Phase
 1. **Feature**: Master slide editor mode — a dedicated view for editing master elements.
@@ -172,6 +199,6 @@ All v1-v8 features remain working. This session added comprehensive HTML file an
 5. **Feature**: Keyboard-navigable layer panel (arrow keys, Enter).
 6. **Feature**: Custom font upload (FontFace API).
 7. **Feature**: Slide thumbnail live preview (real-time mini render updates).
-8. **Feature**: External CSS stylesheet support in HTML import (resolve `<link>` tags).
+8. **Feature**: External CSS stylesheet support in HTML import.
 9. **Feature**: Export to individual PNG per slide (batch export).
 10. **Polish**: Animated transition between slides in the thumbnail panel.

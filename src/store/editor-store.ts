@@ -306,6 +306,19 @@ function defaultSlide(): Slide {
 }
 
 // ---------- Store types ----------
+
+/** A single history entry with a descriptive label and timestamp */
+export interface HistoryEntry {
+  /** The slide state at this point in history */
+  slides: Slide[]
+  /** Human-readable description of the action that led to this state */
+  label: string
+  /** Timestamp when this entry was created */
+  timestamp: number
+  /** Icon name (lucide) to display in the history panel */
+  icon: string
+}
+
 interface EditorState {
   slides: Slide[]
   currentSlideId: string
@@ -314,9 +327,9 @@ interface EditorState {
   // Master elements appear on ALL slides (logos, page numbers, etc.)
   masterElements: EditorElement[]
   masterVisible: boolean
-  // history
-  past: Slide[][]
-  future: Slide[][]
+  // history — now with labeled entries
+  past: HistoryEntry[]
+  future: HistoryEntry[]
   // canvas
   zoom: number
   showGrid: boolean
@@ -383,6 +396,10 @@ interface EditorState {
   // history
   undo: () => void
   redo: () => void
+  /** Jump to a specific point in history by index. Negative = past, positive = future. */
+  jumpToHistory: (index: number) => void
+  /** Clear all history (past + future) */
+  clearHistory: () => void
   // import / replace
   replaceSlides: (slides: Slide[]) => void
   loadProject: (data: { slides: Slide[]; currentSlideId?: string | null }) => void
@@ -392,6 +409,24 @@ interface EditorState {
 function snapshot(slides: Slide[]): Slide[][] {
   // Deep clone via structuredClone
   return [structuredClone(slides)]
+}
+
+/** Create a labeled history entry from the current slides state */
+function makeHistoryEntry(slides: Slide[], label: string, icon: string): HistoryEntry {
+  return {
+    slides: structuredClone(slides),
+    label,
+    timestamp: Date.now(),
+    icon,
+  }
+}
+
+/**
+ * Helper to push a history entry. Returns the new past array (capped at 50).
+ * Use this in actions that modify slides.
+ */
+function pushHistory(past: HistoryEntry[], slides: Slide[], label: string, icon: string): HistoryEntry[] {
+  return [...past, makeHistoryEntry(slides, label, icon)].slice(-50)
 }
 
 function reindex(elements: EditorElement[]): EditorElement[] {
@@ -437,7 +472,6 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   addElement: (el) => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       const slides = s.slides.map((slide) => {
         if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
         const maxZ = slide.elements.reduce(
@@ -451,7 +485,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       })
       return {
         slides,
-        past: past.slice(-50),
+        past: pushHistory(s.past, s.slides, "Add element", "Plus"),
         future: [],
         selectedIds: [el.id],
         editingId: null,
@@ -492,7 +526,6 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   removeElements: (ids) => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       const slides = s.slides.map((slide) => {
         if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
         return {
@@ -504,7 +537,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       })
       return {
         slides,
-        past: past.slice(-50),
+        past: pushHistory(s.past, s.slides, "Delete elements", "Trash2"),
         future: [],
         selectedIds: [],
         editingId: null,
@@ -514,7 +547,6 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   duplicateElements: (ids) => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       const slides = s.slides.map((slide) => {
         if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
         const toDup = slide.elements.filter((el) => ids.includes(el.id))
@@ -543,7 +575,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         .map((e) => e.id) ?? []
       return {
         slides,
-        past: past.slice(-50),
+        past: pushHistory(s.past, s.slides, "Duplicate elements", "Copy"),
         future: [],
         selectedIds: newIds,
       }
@@ -623,7 +655,6 @@ export const useEditor = create<EditorState>((set, get) => ({
   alignElements: (ids, mode) => {
     set((s) => {
       if (ids.length < 2) return s
-      const past = [...s.past, ...snapshot(s.slides)]
       const slides = s.slides.map((slide) => {
         if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
         const targets = slide.elements.filter((e) => ids.includes(e.id))
@@ -662,14 +693,13 @@ export const useEditor = create<EditorState>((set, get) => ({
         })
         return { ...slide, elements }
       })
-      return { slides, past: past.slice(-50), future: [] }
+      return { slides, past: pushHistory(s.past, s.slides, "Align elements", "AlignStartVertical"), future: [] }
     })
   },
 
   distributeElements: (ids, axis) => {
     set((s) => {
       if (ids.length < 3) return s
-      const past = [...s.past, ...snapshot(s.slides)]
       const slides = s.slides.map((slide) => {
         if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
         let targets = slide.elements.filter((e) => ids.includes(e.id))
@@ -715,14 +745,13 @@ export const useEditor = create<EditorState>((set, get) => ({
           }
         }
       })
-      return { slides, past: past.slice(-50), future: [] }
+      return { slides, past: pushHistory(s.past, s.slides, "Distribute elements", "AlignHorizontalSpaceAround"), future: [] }
     })
   },
 
   matchSize: (ids, dimension) => {
     set((s) => {
       if (ids.length < 2) return s
-      const past = [...s.past, ...snapshot(s.slides)]
       const slides = s.slides.map((slide) => {
         if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
         const targets = slide.elements.filter((e) => ids.includes(e.id))
@@ -738,14 +767,13 @@ export const useEditor = create<EditorState>((set, get) => ({
         })
         return { ...slide, elements }
       })
-      return { slides, past: past.slice(-50), future: [] }
+      return { slides, past: pushHistory(s.past, s.slides, "Match size", "SquareEqual"), future: [] }
     })
   },
 
   groupElements: (ids) => {
     set((s) => {
       if (ids.length < 2) return s
-      const past = [...s.past, ...snapshot(s.slides)]
       const groupId = uuid()
       const slides = s.slides.map((slide) => {
         if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
@@ -756,13 +784,12 @@ export const useEditor = create<EditorState>((set, get) => ({
           ),
         }
       })
-      return { slides, past: past.slice(-50), future: [] }
+      return { slides, past: pushHistory(s.past, s.slides, "Group elements", "Group"), future: [] }
     })
   },
 
   ungroupElements: (ids) => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       const slides = s.slides.map((slide) => {
         if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
         // Get the groupIds of the selected elements
@@ -781,23 +808,21 @@ export const useEditor = create<EditorState>((set, get) => ({
           ),
         }
       })
-      return { slides, past: past.slice(-50), future: [] }
+      return { slides, past: pushHistory(s.past, s.slides, "Ungroup elements", "Ungroup"), future: [] }
     })
   },
 
   setSlideBackgroundImage: (id, src) => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       const slides = s.slides.map((sl) =>
         sl.id === id ? { ...sl, backgroundImage: src } : sl,
       )
-      return { slides, past: past.slice(-50), future: [] }
+      return { slides, past: pushHistory(s.past, s.slides, "Set background image", "Image"), future: [] }
     })
   },
 
   addSlide: () => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       const newSlide: Slide = {
         id: uuid(),
         name: `Slide ${s.slides.length + 1}`,
@@ -808,7 +833,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         slides: [...s.slides, newSlide],
         currentSlideId: newSlide.id,
         selectedIds: [],
-        past: past.slice(-50),
+        past: pushHistory(s.past, s.slides, "Add slide", "Plus"),
         future: [],
       }
     })
@@ -816,7 +841,6 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   duplicateSlide: (id) => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       const idx = s.slides.findIndex((sl) => sl.id === id)
       if (idx < 0) return s
       const original = s.slides[idx]
@@ -835,7 +859,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         slides,
         currentSlideId: copy.id,
         selectedIds: [],
-        past: past.slice(-50),
+        past: pushHistory(s.past, s.slides, "Duplicate slide", "Copy"),
         future: [],
       }
     })
@@ -844,7 +868,6 @@ export const useEditor = create<EditorState>((set, get) => ({
   removeSlide: (id) => {
     set((s) => {
       if (s.slides.length <= 1) return s
-      const past = [...s.past, ...snapshot(s.slides)]
       const idx = s.slides.findIndex((sl) => sl.id === id)
       const slides = s.slides.filter((sl) => sl.id !== id)
       const nextIdx = Math.max(0, idx - 1)
@@ -852,7 +875,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         slides,
         currentSlideId: slides[nextIdx].id,
         selectedIds: [],
-        past: past.slice(-50),
+        past: pushHistory(s.past, s.slides, "Delete slide", "Trash2"),
         future: [],
       }
     })
@@ -862,21 +885,19 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   reorderSlides: (from, to) => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       const slides = [...s.slides]
       const [moved] = slides.splice(from, 1)
       slides.splice(to, 0, moved)
-      return { slides, past: past.slice(-50), future: [] }
+      return { slides, past: pushHistory(s.past, s.slides, "Reorder slides", "ArrowLeftRight"), future: [] }
     })
   },
 
   setSlideBackground: (id, bg) => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       const slides = s.slides.map((sl) =>
         sl.id === id ? { ...sl, background: bg } : sl,
       )
-      return { slides, past: past.slice(-50), future: [] }
+      return { slides, past: pushHistory(s.past, s.slides, "Set background", "Palette"), future: [] }
     })
   },
 
@@ -900,11 +921,10 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   setSlideTransition: (id, transition) => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       const slides = s.slides.map((sl) =>
         sl.id === id ? { ...sl, transition } : sl,
       )
-      return { slides, past: past.slice(-50), future: [] }
+      return { slides, past: pushHistory(s.past, s.slides, "Set transition", "Sparkles"), future: [] }
     })
   },
 
@@ -912,7 +932,6 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => {
       const slide = s.slides.find((sl) => sl.id === (s.currentSlideId || s.slides[0]?.id))
       if (!slide) return s
-      const past = [...s.past, ...snapshot(s.slides)]
       // Remove elements from current slide
       const remaining = slide.elements.filter((el) => !ids.includes(el.id))
       // Elements to promote
@@ -924,7 +943,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         slides,
         masterElements: [...s.masterElements, ...promoted],
         selectedIds: [],
-        past: past.slice(-50),
+        past: pushHistory(s.past, s.slides, "Promote to master", "Crown"),
         future: [],
       }
     })
@@ -932,7 +951,6 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   demoteFromMaster: (ids) => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       const remaining = s.masterElements.filter((el) => !ids.includes(el.id))
       const demoted = s.masterElements.filter((el) => ids.includes(el.id))
       const slide = s.slides.find((sl) => sl.id === (s.currentSlideId || s.slides[0]?.id))
@@ -944,7 +962,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         slides,
         masterElements: remaining,
         selectedIds: [],
-        past: past.slice(-50),
+        past: pushHistory(s.past, s.slides, "Demote from master", "ArrowDownToLine"),
         future: [],
       }
     })
@@ -977,7 +995,6 @@ export const useEditor = create<EditorState>((set, get) => ({
   paste: () => {
     set((s) => {
       if (s.clipboard.length === 0) return s
-      const past = [...s.past, ...snapshot(s.slides)]
       const slides = s.slides.map((slide) => {
         if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
         const maxZ = slide.elements.reduce(
@@ -1006,7 +1023,7 @@ export const useEditor = create<EditorState>((set, get) => ({
           .map((e) => e.id) ?? []
       return {
         slides,
-        past: past.slice(-50),
+        past: pushHistory(s.past, s.slides, "Paste", "ClipboardPaste"),
         future: [],
         selectedIds: newIds,
       }
@@ -1016,15 +1033,15 @@ export const useEditor = create<EditorState>((set, get) => ({
   undo: () => {
     set((s) => {
       if (s.past.length === 0) return s
-      const previous = s.past[s.past.length - 1]
+      const previousEntry = s.past[s.past.length - 1]
       const past = s.past.slice(0, -1)
-      const future = [snapshot(s.slides)[0], ...s.future].slice(0, 50)
+      const future = [makeHistoryEntry(s.slides, "Current state", "Circle"), ...s.future].slice(0, 50)
       const currentSlideId =
-        previous.find((sl) => sl.id === s.currentSlideId)?.id ??
-        previous[0]?.id ??
+        previousEntry.slides.find((sl) => sl.id === s.currentSlideId)?.id ??
+        previousEntry.slides[0]?.id ??
         ""
       return {
-        slides: previous,
+        slides: previousEntry.slides,
         past,
         future,
         currentSlideId,
@@ -1037,13 +1054,13 @@ export const useEditor = create<EditorState>((set, get) => ({
   redo: () => {
     set((s) => {
       if (s.future.length === 0) return s
-      const next = s.future[0]
+      const nextEntry = s.future[0]
       const future = s.future.slice(1)
-      const past = [...s.past, ...snapshot(s.slides)].slice(-50)
+      const past = [...s.past, makeHistoryEntry(s.slides, "Before redo", "RotateCcw")].slice(-50)
       const currentSlideId =
-        next.find((sl) => sl.id === s.currentSlideId)?.id ?? next[0]?.id ?? ""
+        nextEntry.slides.find((sl) => sl.id === s.currentSlideId)?.id ?? nextEntry.slides[0]?.id ?? ""
       return {
-        slides: next,
+        slides: nextEntry.slides,
         past,
         future,
         currentSlideId,
@@ -1053,15 +1070,77 @@ export const useEditor = create<EditorState>((set, get) => ({
     })
   },
 
+  jumpToHistory: (index) => {
+    set((s) => {
+      // index = 0 means current state (no-op)
+      // index < 0 means undo |index| times (jump into past)
+      // index > 0 means redo |index| times (jump into future)
+      if (index === 0) return s
+      if (index < 0) {
+        // Jump back into past
+        const steps = Math.min(Math.abs(index), s.past.length)
+        if (steps === 0) return s
+        // Entries to move from past to future (in reverse order)
+        const movedToFuture = s.past.slice(-steps).reverse().map((entry) => ({
+          ...entry,
+          label: entry.label,
+          timestamp: Date.now(),
+        }))
+        // Also add current state to future
+        const currentStateEntry = makeHistoryEntry(s.slides, "Current state", "Circle")
+        const future = [currentStateEntry, ...movedToFuture, ...s.future].slice(0, 50)
+        const past = s.past.slice(0, -steps)
+        const targetEntry = s.past[s.past.length - steps]
+        const currentSlideId =
+          targetEntry.slides.find((sl) => sl.id === s.currentSlideId)?.id ??
+          targetEntry.slides[0]?.id ??
+          ""
+        return {
+          slides: targetEntry.slides,
+          past,
+          future,
+          currentSlideId,
+          selectedIds: [],
+          editingId: null,
+        }
+      } else {
+        // Jump forward into future
+        const steps = Math.min(index, s.future.length)
+        if (steps === 0) return s
+        const movedToPast = s.future.slice(0, steps)
+        // Add current state to past
+        const currentStateEntry = makeHistoryEntry(s.slides, "Before jump", "Circle")
+        const past = [...s.past, currentStateEntry, ...movedToPast].slice(-50)
+        const future = s.future.slice(steps)
+        const targetEntry = s.future[steps - 1]
+        const currentSlideId =
+          targetEntry.slides.find((sl) => sl.id === s.currentSlideId)?.id ??
+          targetEntry.slides[0]?.id ??
+          ""
+        return {
+          slides: targetEntry.slides,
+          past,
+          future,
+          currentSlideId,
+          selectedIds: [],
+          editingId: null,
+        }
+      }
+    })
+  },
+
+  clearHistory: () => {
+    set({ past: [], future: [] })
+  },
+
   replaceSlides: (slides) => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       return {
         slides,
         currentSlideId: slides[0]?.id ?? "",
         selectedIds: [],
         editingId: null,
-        past: past.slice(-50),
+        past: pushHistory(s.past, s.slides, "Replace slides", "RefreshCw"),
         future: [],
       }
     })
@@ -1069,7 +1148,6 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   loadProject: (data) => {
     set((s) => {
-      const past = [...s.past, ...snapshot(s.slides)]
       const currentSlideId = data.currentSlideId && data.slides.find((sl) => sl.id === data.currentSlideId)
         ? data.currentSlideId
         : data.slides[0]?.id ?? ""
@@ -1078,7 +1156,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         currentSlideId,
         selectedIds: [],
         editingId: null,
-        past: past.slice(-50),
+        past: pushHistory(s.past, s.slides, "Load project", "FolderOpen"),
         future: [],
       }
     })

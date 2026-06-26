@@ -11,6 +11,7 @@ import {
   Eye, EyeOff, Lock, Unlock, ChevronUp, ChevronDown, Search,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { HistoryPanel } from "./HistoryPanel"
 
 export function LayersPanel() {
   const { currentSlide, selectedIds, setSelected, updateElement, bringForward, sendBackward } = useEditor()
@@ -22,8 +23,8 @@ export function LayersPanel() {
     .filter((e) => e.name.toLowerCase().includes(query.toLowerCase()))
 
   return (
-    <div className="w-60 border-r bg-background flex flex-col h-full shrink-0">
-      <div className="p-3 border-b">
+    <div className="w-60 border-r bg-background flex flex-col h-full shrink-0 overflow-hidden">
+      <div className="p-3 border-b shrink-0">
         <h3 className="text-sm font-semibold mb-2">Layers</h3>
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
@@ -35,7 +36,7 @@ export function LayersPanel() {
           />
         </div>
       </div>
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-2 space-y-0.5">
           {elements.length === 0 && (
             <div className="text-xs text-muted-foreground p-3 text-center">No layers yet</div>
@@ -54,6 +55,7 @@ export function LayersPanel() {
           ))}
         </div>
       </ScrollArea>
+      <HistoryPanel />
     </div>
   )
 }

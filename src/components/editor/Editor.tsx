@@ -21,15 +21,28 @@ import { toast } from "sonner"
 import { useAutosave } from "@/hooks/use-autosave"
 import { exportSlidesToPrintableHtml } from "@/lib/pdf-export"
 import { exportSlideAsPng, downloadDataUrl } from "@/lib/png-export"
-import { Clock, RotateCcw, X } from "lucide-react"
+import { Clock, RotateCcw, X, ArrowLeft } from "lucide-react"
 
-export function Editor() {
+interface EditorProps {
+  initialImportOpen?: boolean
+  onExit?: () => void
+}
+
+export function Editor({ initialImportOpen, onExit }: EditorProps = {}) {
   const [importOpen, setImportOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
   const [presentationOpen, setPresentationOpen] = useState(false)
+
+  // Open import dialog if requested from landing page
+  const [prevInitialImport, setPrevInitialImport] = useState(false)
+  if (initialImportOpen && !prevInitialImport) {
+    setPrevInitialImport(true)
+    setImportOpen(true)
+  }
+
   const {
     selectedIds, removeElements, duplicateElements, copy, paste,
     undo, redo, updateElements, currentSlide, slides, alignElements,
@@ -223,8 +236,20 @@ export function Editor() {
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-background">
       <header className="h-10 border-b bg-background flex items-center px-4 gap-2 shrink-0">
+        {onExit && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 text-xs px-2 -ml-1"
+            onClick={onExit}
+            title="Back to home"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Home</span>
+          </Button>
+        )}
         <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold">S</div>
+          <div className="w-5 h-5 rounded bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold shadow-sm">S</div>
           <span className="font-semibold text-sm">SlideForge</span>
           <span className="text-xs text-muted-foreground hidden sm:inline">PowerPoint-like HTML editor</span>
         </div>
