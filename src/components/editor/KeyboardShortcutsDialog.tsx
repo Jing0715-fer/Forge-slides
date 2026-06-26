@@ -18,6 +18,7 @@ const SHORTCUTS: { category: string; items: { keys: string; desc: string }[] }[]
       { keys: "Ctrl + Shift + Z / Ctrl + Y", desc: "Redo" },
       { keys: "Ctrl + A", desc: "Select all elements" },
       { keys: "Ctrl + S", desc: "Save to browser (autosave)" },
+      { keys: "Ctrl + H / Ctrl + F", desc: "Find & Replace" },
       { keys: "?", desc: "Show this dialog" },
       { keys: "Esc", desc: "Cancel text edit / close dialog" },
     ],

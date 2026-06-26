@@ -4,10 +4,15 @@ import React from "react"
 import { useEditor, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/store/editor-store"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Plus, Copy, Trash2 } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Plus, Copy, Trash2, LayoutTemplate } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-export function SlidesPanel() {
+interface SlidesPanelProps {
+  onNewFromTemplate?: () => void
+}
+
+export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
   const {
     slides,
     currentSlideId,
@@ -21,9 +26,31 @@ export function SlidesPanel() {
     <div className="h-28 border-t bg-background flex flex-col shrink-0">
       <div className="flex items-center justify-between px-3 py-1.5 border-b">
         <h3 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Slides</h3>
-        <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={addSlide}>
-          <Plus className="w-3 h-3" /> New
-        </Button>
+        <div className="flex items-center gap-1">
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={() => onNewFromTemplate ? onNewFromTemplate() : addSlide()}
+                >
+                  <LayoutTemplate className="w-3 h-3" /> Template
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">New from template</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={addSlide}>
+                  <Plus className="w-3 h-3" /> Blank
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">New blank slide</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </div>
       <ScrollArea className="flex-1">
         <div className="flex gap-2 p-2 overflow-x-auto">

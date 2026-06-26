@@ -9,6 +9,8 @@ import { LayersPanel } from "./LayersPanel"
 import { SlidesPanel } from "./SlidesPanel"
 import { ImportHtmlDialog, ExportDialog } from "./ImportHtmlDialog"
 import { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog"
+import { FindReplaceDialog } from "./FindReplaceDialog"
+import { TemplatePickerDialog } from "./TemplatePickerDialog"
 import { CanvasContextMenu } from "./CanvasContextMenu"
 import { Toaster } from "@/components/ui/sonner"
 import { Button } from "@/components/ui/button"
@@ -21,6 +23,8 @@ export function Editor() {
   const [importOpen, setImportOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false)
+  const [templateOpen, setTemplateOpen] = useState(false)
   const {
     selectedIds, removeElements, duplicateElements, copy, paste,
     undo, redo, updateElements, currentSlide, slides, alignElements,
@@ -122,6 +126,20 @@ export function Editor() {
         return
       }
 
+      // Find & Replace
+      if (meta && e.key === "h") {
+        e.preventDefault()
+        setFindReplaceOpen(true)
+        return
+      }
+
+      // Find (just open find)
+      if (meta && e.key === "f") {
+        e.preventDefault()
+        setFindReplaceOpen(true)
+        return
+      }
+
       // Alignment shortcuts (multi-select)
       if (meta && selectedIds.length >= 2) {
         const alignMap: Record<string, Parameters<typeof alignElements>[1]> = {
@@ -205,6 +223,7 @@ export function Editor() {
         onExportClick={() => setExportOpen(true)}
         onPdfExport={handlePdfExport}
         onShowShortcuts={() => setShortcutsOpen(true)}
+        onFindReplace={() => setFindReplaceOpen(true)}
       />
       {restoreData && (
         <div className="bg-primary/10 border-b border-primary/20 px-4 py-2 flex items-center gap-3 text-sm">
@@ -226,13 +245,15 @@ export function Editor() {
         <LayersPanel />
         <div className="flex-1 flex flex-col min-w-0">
           <Canvas />
-          <SlidesPanel />
+          <SlidesPanel onNewFromTemplate={() => setTemplateOpen(true)} />
         </div>
         <PropertyPanel />
       </div>
       <ImportHtmlDialog open={importOpen} onOpenChange={setImportOpen} />
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} />
       <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <FindReplaceDialog open={findReplaceOpen} onOpenChange={setFindReplaceOpen} />
+      <TemplatePickerDialog open={templateOpen} onOpenChange={setTemplateOpen} />
       <CanvasContextMenu />
       <Toaster richColors position="bottom-right" />
     </div>

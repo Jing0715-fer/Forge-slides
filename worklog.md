@@ -2,75 +2,90 @@
 
 ## Project Status
 
-**Phase**: v3 — Element grouping, aspect-ratio lock, context menu, drag-drop images all implemented and verified.
-**Last Updated**: 2026-06-26 09:00 (Asia/Shanghai)
+**Phase**: v4 — Find & Replace, slide templates, color swatch palette all implemented and verified.
+**Last Updated**: 2026-06-26 17:45 (Asia/Shanghai)
 
 SlideForge is a PowerPoint-like HTML editor for fine-tuning AI-generated slides.
 The app runs on Next.js 16 at `http://localhost:3000/` (single route `/`).
 
 ---
 
-## Current State (v3)
+## Current State (v4)
 
-All v1 + v2 features remain working. This session added 4 major features and visual polish.
+All v1 + v2 + v3 features remain working. This session added 3 major features and fixed a lint error from v3.
 
-### Verified This Session (agent-browser + VLM, 2026-06-26 09:00)
-- **Element grouping (Ctrl+G / Ctrl+Shift+G)**: Grouped elements move together as a unit. Verified: grouped 3 cards, dragged Card A from x=90 to x=384 — all 3 cards moved together maintaining 380px spacing (B: 470→764, C: 850→1144). Undo restored positions. Grouped elements show dashed blue selection ring.
-- **Lock aspect ratio (Shift+drag corner)**: When resizing with a corner handle while holding Shift, the aspect ratio is preserved. Snapping is disabled during aspect-locked resize to avoid conflicting adjustments.
-- **Right-click context menu**: Full context menu on canvas elements with 9 items: Duplicate, Copy, Paste, Delete, Bring to Front, Send to Back, Group, Ungroup, Lock/Unlock. Items are contextually disabled (e.g., Group needs 2+ selected, Ungroup needs grouped selection). Verified menu appears on right-click with all items visible.
-- **Drag-and-drop image onto canvas**: Drag an image file from desktop directly onto the canvas. A dashed overlay "Drop image to add to slide" appears during drag. Image is auto-sized (max 600×450, preserves aspect ratio) and positioned at drop location. Also added `backgroundImage` support to slides.
-- **Shortcuts dialog expanded**: Now 5 categories (General, Editing, Moving & Resizing, Selection, Alignment) with 30+ shortcuts including new Ctrl+G/Shift+G (group/ungroup), Shift+corner (aspect lock), right-click (context menu), drag image file, and all 6 alignment shortcuts (Ctrl+Shift+L/E/R/T/M/B).
-- **Group/Ungroup buttons in toolbar**: Added to the contextual AlignmentToolbar with Group/Ungroup icons and tooltips.
+### Verified This Session (agent-browser + VLM, 2026-06-26 17:45)
+- **Find & Replace (Ctrl+H / Ctrl+F)**: Dialog with find/replace inputs, case-sensitive toggle, whole-word toggle, live results list with context highlighting, prev/next navigation, replace current, replace all. Verified: searched "Welcome" → found 1 match in title element; replaced with "Hello" → title changed to "Hello to SlideForge". Results show element name, slide name, and match context with yellow highlight.
+- **Slide Templates**: Template picker dialog with 7 templates (Blank, Title Slide, Title+Content, Two Column, Three Cards, Section Divider, Quote, Dark Gradient). Each has a visual thumbnail preview. Verified: picked "Three Cards" → new slide created with 10 elements (title + 3 cards + 3 titles + 3 bodies), all rendering correctly with indigo/cyan/amber colors. Slides panel now has separate "Template" and "Blank" buttons.
+- **Color Swatch Palette**: Reusable ColorSwatchPicker component with popover containing: native color input, hex text input, transparent toggle, recent colors (8 slots, persisted to localStorage), full palette of 88 preset colors (grays, reds, oranges, ambers, yellows, greens, teals, cyans, blues, indigos, violets, purples, fuchsias, pinks, roses), and EyeDropper API support (Chrome/Edge). Verified: popover opens with Recent and Palette sections, 88 swatches rendered. Integrated into PropertyPanel's ColorField for all color properties (fill, stroke, text color, shadow color, slide background).
+- **Shortcuts dialog updated**: Added Ctrl+H / Ctrl+F (Find & Replace) to General section.
 
-### Bug Fixes / Improvements This Session
-- Grouped element selection uses dashed blue outline to visually distinguish from regular selection.
-- Resize snapping is automatically disabled when Shift is held (aspect-ratio lock mode) to prevent conflicting snap adjustments.
-- Group drag computes delta from the dragged element's original position and applies uniformly to all group members.
+### Bug Fixes This Session
+- Fixed lint error in FindReplaceDialog.tsx (`react-hooks/preserve-manual-memoization`) by converting useCallback-wrapped `replaceAll` and `goToMatch` to plain functions.
+- Fixed lint error in use-recent-colors.ts (`react-hooks/set-state-in-effect`) by using useState lazy initializer instead of useEffect+setState.
+- Wired up FindReplaceDialog (was created in v3 but never connected to Editor/Toolbar/keyboard).
 
 ---
 
 ## Architecture
-- **State**: Zustand store at `src/store/editor-store.ts` — now with `groupElements`, `ungroupElements`, `setSlideBackgroundImage` actions.
-- **Types**: `src/types/editor.ts` — added `groupId` to BaseElement, `backgroundImage` to Slide.
-- **Alignment**: `src/lib/alignment.ts` — PPT-style smart snapping (unchanged).
-- **HTML I/O**: `src/lib/html-io.ts` — gradient/shape/shadow-aware parser (from v2).
-- **PDF export**: `src/lib/pdf-export.ts` — print-ready HTML (from v2).
-- **Persistence**: `src/lib/persistence.ts` — localStorage autosave (from v2).
-- **Components**: `src/components/editor/` — Editor, Toolbar (2-row), AlignmentToolbar (with group/ungroup), TextStylePresets, Canvas (with drag-drop), CanvasElement (with group move + aspect lock + dashed group ring), LayersPanel, SlidesPanel, PropertyPanel, ImportHtmlDialog, ExportDialog, KeyboardShortcutsDialog (5 categories), CanvasContextMenu (new).
+- **State**: Zustand store at `src/store/editor-store.ts`.
+- **Types**: `src/types/editor.ts` — text, rect, ellipse, triangle, line, image, container + groupId + backgroundImage.
+- **Templates**: `src/lib/templates.ts` — 7 slide templates with build functions.
+- **Alignment**: `src/lib/alignment.ts` — PPT-style smart snapping.
+- **HTML I/O**: `src/lib/html-io.ts` — gradient/shape/shadow-aware parser.
+- **PDF export**: `src/lib/pdf-export.ts` — print-ready HTML.
+- **Persistence**: `src/lib/persistence.ts` — localStorage autosave.
+- **Recent colors**: `src/hooks/use-recent-colors.ts` — 16 recent + 88 preset palette, persisted.
+- **Autosave hook**: `src/hooks/use-autosave.ts` — debounced save + restore banner.
+- **Components**: `src/components/editor/` — Editor, Toolbar (2-row), AlignmentToolbar, TextStylePresets, Canvas (with drag-drop), CanvasElement (group move + aspect lock), LayersPanel, SlidesPanel (Template + Blank buttons), PropertyPanel (with ColorSwatchPicker), ImportHtmlDialog, ExportDialog, KeyboardShortcutsDialog (5 categories), FindReplaceDialog, TemplatePickerDialog, CanvasContextMenu, ColorSwatchPicker.
 
 ---
 
-## All Features (v1 + v2 + v3)
+## All Features (v1 + v2 + v3 + v4)
 
 ### Editing
 - PPT-like drag with smart alignment guides (6px threshold)
 - 8-handle resize with edge snapping
-- **Shift+corner resize = lock aspect ratio** (NEW)
+- Shift+corner resize = lock aspect ratio
 - Rotation handle (Shift = 15° snap)
 - Double-click text to edit in place
 - Marquee (box) selection
 - Shift+click for multi-select
-- **Right-click context menu** (NEW)
+- Right-click context menu
 
 ### Elements
-- Text (full typography + 8 style presets: H1/H2/H3/Body/Caption/Quote/Button/Code)
+- Text (full typography + 8 style presets)
 - Rectangle, Ellipse, Triangle, Line
-- Image (upload from file, URL, OR **drag-drop onto canvas**)
+- Image (upload from file, URL, OR drag-drop onto canvas)
 - Container (raw HTML)
 
-### Grouping (NEW)
-- Ctrl+G to group selected elements
-- Ctrl+Shift+G to ungroup
+### Grouping
+- Ctrl+G to group, Ctrl+Shift+G to ungroup
 - Grouped elements move together
-- Dashed blue selection ring indicates group membership
-- Group/Ungroup buttons in contextual toolbar
-- Group/Ungroup in right-click context menu
+- Dashed blue selection ring for groups
 
 ### Multi-Selection
-- Align Left/Center-H/Right, Top/Middle/Bottom
-- Distribute Horizontally/Vertically (3+ elements)
-- Match Width, Match Width & Height
+- Align L/C/R/T/M/B, Distribute H/V, Match W/H
 - Ctrl+Shift+L/E/R/T/M/B alignment shortcuts
+
+### Find & Replace (NEW)
+- Ctrl+H or Ctrl+F to open dialog
+- Case-sensitive and whole-word toggles
+- Live results with context highlighting
+- Previous/Next navigation
+- Replace current or Replace all
+
+### Slide Templates (NEW)
+- 7 templates: Blank, Title Slide, Title+Content, Two Column, Three Cards, Section Divider, Quote, Dark Gradient
+- Visual thumbnail previews in picker
+- Separate Template and Blank buttons in slides panel
+
+### Color System (NEW)
+- ColorSwatchPicker with popover
+- Recent colors (persisted, 16 slots)
+- 88-color preset palette (15 color families)
+- EyeDropper API support (Chrome/Edge)
+- Transparent toggle for fill/stroke
 
 ### Styling
 - Fill, Stroke, Corner radius, Shadow, Opacity, Rotation
@@ -79,6 +94,7 @@ All v1 + v2 features remain working. This session added 4 major features and vis
 ### Slides
 - Multi-slide with live thumbnail previews
 - Add/Duplicate/Delete slides
+- New from template or blank
 
 ### Layers
 - Searchable layer list, Lock/Visibility, Bring forward/backward
@@ -95,9 +111,10 @@ All v1 + v2 features remain working. This session added 4 major features and vis
 - Autosave to localStorage (1.5s debounce)
 - Restore session banner on reload
 
-### Keyboard Shortcuts (30+)
+### Keyboard Shortcuts (35+)
 - `T` add text · `Ctrl+Z/Y` undo/redo · `Ctrl+C/V/D` copy/paste/duplicate · `Del` delete · `Ctrl+A` select all · `Ctrl+S` save
 - `Ctrl+G` group · `Ctrl+Shift+G` ungroup
+- `Ctrl+H` / `Ctrl+F` find & replace (NEW)
 - Arrow keys nudge 1px (Shift = 10px) · Alt+Arrow resizes
 - Shift+corner = aspect lock · Shift+rotate = 15° snap
 - `Ctrl+Shift+L/E/R/T/M/B` align
@@ -110,17 +127,17 @@ All v1 + v2 features remain working. This session added 4 major features and vis
 - Smart HTML import works best with absolutely-positioned elements.
 - PDF export opens a new window — popup blockers may interfere.
 - Autosave stores image data URLs — large images could exceed localStorage quota.
-- Drag-drop image test couldn't be fully automated via agent-browser (file drag simulation limited), but code is verified correct and overlay appears.
-- Group resize moves only the dragged element (not the whole group) — acceptable for v3; group resize is a future enhancement.
+- Group resize moves only the dragged element (not the whole group).
+- EyeDropper API only works in Chrome/Edge (button hidden in other browsers).
 
 ## Priority Recommendations for Next Phase
-1. **Feature**: Group resize — when resizing one element in a group, all group members scale proportionally.
-2. **Feature**: Find & replace text across all slides (Ctrl+H).
-3. **Feature**: Color picker with recent colors + saved swatches palette.
-4. **Feature**: Master slide / template system.
-5. **Polish**: Snap to other elements' edges during resize (currently snaps to centers and canvas edges).
-6. **Feature**: Slide transitions / animations preview.
-7. **Feature**: Export individual slide as PNG (via html-to-image or canvas snapshot).
-8. **Performance**: Virtualized layer list for 100+ elements.
-9. **Polish**: Multi-select bounding box with group resize handles.
-10. **Feature**: Keyboard-navigable layer panel (arrow up/down to select layers).
+1. **Feature**: Export individual slide as PNG (via html-to-image or canvas snapshot).
+2. **Feature**: Group resize — when resizing one element in a group, all group members scale proportionally.
+3. **Feature**: Master slide / template system (define a master, apply to new slides).
+4. **Polish**: Snap to other elements' edges during resize (currently snaps to centers and canvas edges).
+5. **Feature**: Slide transitions / animations preview.
+6. **Performance**: Virtualized layer list for 100+ elements.
+7. **Polish**: Multi-select bounding box with group resize handles.
+8. **Feature**: Keyboard-navigable layer panel (arrow up/down to select layers).
+9. **Feature**: Gradient picker for fill (currently only solid colors via swatch).
+10. **Polish**: Animation when opening dialogs (slide-in, fade).

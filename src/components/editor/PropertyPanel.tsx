@@ -11,6 +11,7 @@ import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Toggle } from "@/components/ui/toggle"
+import { ColorSwatchPicker } from "./ColorSwatchPicker"
 import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -445,7 +446,6 @@ function ColorField({
   value,
   onChange,
   allowTransparent,
-  allowAlpha,
 }: {
   label: string
   value: string
@@ -453,33 +453,20 @@ function ColorField({
   allowTransparent?: boolean
   allowAlpha?: boolean
 }) {
-  const isTransparent = value === "transparent"
-  const hex = isTransparent ? "#ffffff" : normalizeColor(value)
   return (
     <div className="mt-2">
       <Label className="text-xs">{label}</Label>
-      <div className="flex gap-2 mt-1">
-        <input
-          type="color"
-          value={hex}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-9 h-8 rounded border cursor-pointer shrink-0"
+      <div className="flex gap-2 items-center mt-1">
+        <ColorSwatchPicker
+          value={value}
+          onChange={onChange}
+          allowTransparent={allowTransparent}
         />
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="h-8 text-xs"
+          className="h-8 text-xs font-mono"
         />
-        {allowTransparent && (
-          <Button
-            variant={isTransparent ? "secondary" : "outline"}
-            size="sm"
-            className="h-8 px-2 text-xs shrink-0"
-            onClick={() => onChange(isTransparent ? "#ffffff" : "transparent")}
-          >
-            None
-          </Button>
-        )}
       </div>
     </div>
   )

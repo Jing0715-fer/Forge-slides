@@ -85,7 +85,7 @@ export function FindReplaceDialog({ open, onOpenChange }: Props) {
     updateElement(r.elementId, { text: newText } as Partial<TextElement>)
   }, [results, currentMatch, replaceText, slides, updateElement])
 
-  const replaceAll = useCallback(() => {
+  const replaceAll = () => {
     if (results.length === 0 || !findText.trim()) return
     const flags = caseSensitive ? "g" : "gi"
     const word = wholeWord ? `\\b${escapeRegex(findText)}\\b` : escapeRegex(findText)
@@ -107,9 +107,9 @@ export function FindReplaceDialog({ open, onOpenChange }: Props) {
       const newText = t.text.replace(regex, replaceText)
       updateElement(t.id, { text: newText } as Partial<TextElement>)
     }
-  }, [findText, replaceText, caseSensitive, wholeWord, slides, updateElement])
+  }
 
-  const goToMatch = useCallback((index: number) => {
+  const goToMatch = (index: number) => {
     if (index < 0 || index >= results.length) return
     setCurrentMatch(index)
     const r = results[index]
@@ -118,7 +118,7 @@ export function FindReplaceDialog({ open, onOpenChange }: Props) {
     setTimeout(() => {
       useEditor.getState().setSelected([r.elementId])
     }, 100)
-  }, [results])
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Type, Square, Circle, Triangle, Minus, Image as ImageIcon, Upload,
   Undo2, Redo2, Copy, Trash2, BringToFront, SendToBack,
-  ZoomIn, ZoomOut, Grid3x3, Magnet, Download, FileText, HelpCircle,
+  ZoomIn, ZoomOut, Grid3x3, Magnet, Download, FileText, HelpCircle, Search,
 } from "lucide-react"
 import { AlignmentToolbar } from "./AlignmentToolbar"
 import { TextStylePresets } from "./TextStylePresets"
@@ -18,9 +18,10 @@ interface Props {
   onExportClick: () => void
   onPdfExport: () => void
   onShowShortcuts: () => void
+  onFindReplace: () => void
 }
 
-export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShortcuts }: Props) {
+export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShortcuts, onFindReplace }: Props) {
   const {
     addElement, selectedIds, removeElements, duplicateElements,
     bringToFront, sendToBack, undo, redo, past, future,
@@ -171,6 +172,9 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
           </div>
 
           <div className="ml-auto flex items-center gap-1.5">
+            <TooltipBtn label="Find & Replace (Ctrl+H)" onClick={onFindReplace}>
+              <Search className="w-4 h-4" />
+            </TooltipBtn>
             <TooltipBtn label="Keyboard Shortcuts (?)" onClick={onShowShortcuts}>
               <HelpCircle className="w-4 h-4" />
             </TooltipBtn>
