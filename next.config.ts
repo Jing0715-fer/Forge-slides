@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  // Use webpack instead of Turbopack for dev mode. Turbopack's file
+  // watcher on this machine detects its own cache writes in
+  // .next/dev/cache/turbopack/, triggering an infinite HMR fullReload
+  // loop. webpack doesn't have this issue.
+  webpack: (config) => config,
   // P2-6: strip Next.js's default `s-maxage=31536000` prerender cache so
   // browsers don't hold onto HTML that references stale chunk hashes from a
   // previous build. Without this, a page can be served with chunk paths
