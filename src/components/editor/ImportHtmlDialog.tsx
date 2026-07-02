@@ -159,16 +159,18 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
       // suggest uploading the folder instead.
       const info = result.viewerSlideInfo || extractViewerSlideInfo(viewer.content)
       if (info && files.length === 1) {
-        // Single file upload, viewer detected — show suggestion UI instead
-        // of falling back to importing the viewer itself.
+        // Single file upload, viewer detected — show suggestion UI.
+        // Keep the pending files list EMPTY so the user cannot accidentally
+        // import the viewer wrapper itself as a slide (which would just
+        // show a broken blank slide with 404s for sibling files).
         setViewerSlideInfo(info)
-        setPendingFiles(files)
+        setPendingFiles([])
         toast.warning(
           `Detected a ${info.totalCount}-slide deck wrapper (${viewer.filename}). ` +
           `Please upload the entire folder to import all slides.`,
           { duration: 6000 },
         )
-        return files
+        return []
       }
 
       // Multi-file case or no info — fall back to importing everything
@@ -395,7 +397,17 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
               onChange={handleFileInputChange}
               className="hidden"
             />
-            {pendingFiles.length === 0 ? (
+            {viewerSlideInfo ? (
+              <ViewerSuggestionBanner
+                info={viewerSlideInfo}
+                onSelectFolder={() => {
+                  setViewerSlideInfo(null)
+                  setPendingFiles([])
+                  setTab("folder")
+                  setTimeout(() => folderInputRef.current?.click(), 100)
+                }}
+              />
+            ) : pendingFiles.length === 0 ? (
               <div
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
@@ -432,19 +444,6 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
                 onRemove={removePendingFile}
                 onAddMore={() => fileInputRef.current?.click()}
                 totalSize={formatSize(totalSize)}
-              />
-            )}
-            {/* Viewer suggestion: shown when a single viewer file (index.html)
-                is uploaded without its accompanying slide files. */}
-            {viewerSlideInfo && pendingFiles.length === 1 && (
-              <ViewerSuggestionBanner
-                info={viewerSlideInfo}
-                onSelectFolder={() => {
-                  setViewerSlideInfo(null)
-                  setPendingFiles([])
-                  setTab("folder")
-                  setTimeout(() => folderInputRef.current?.click(), 100)
-                }}
               />
             )}
           </TabsContent>

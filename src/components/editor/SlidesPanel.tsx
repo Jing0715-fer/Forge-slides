@@ -162,7 +162,7 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                         className="absolute top-0 left-0 border-none"
                         style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, pointerEvents: "none" }}
                         srcDoc={slide.rawHtml}
-                        sandbox="allow-same-origin"
+                        sandbox="allow-same-origin allow-scripts"
                         title={`Slide ${idx + 1} preview`}
                       />
                     ) : slide.elements.slice().sort((a, b) => a.zIndex - b.zIndex).map((el) => (
