@@ -581,9 +581,27 @@ export function expandViewerReferences(
     return { slides: files, viewerFilename: null, matchMode: null, viewerSlideInfo: null }
   }
 
+  // When files come from a folder upload, their `relativePath` includes the
+  // top-level directory name (e.g. "知识库构建/processed/slide_00.html").
+  // The viewer's refs are relative to the viewer's own location
+  // (e.g. "processed/slide_"). To match correctly, we strip the viewer's
+  // directory prefix from all file paths.
+  const viewerDir = (() => {
+    const rp = viewerFile.relativePath
+    if (!rp) return ""
+    const idx = rp.lastIndexOf("/")
+    return idx >= 0 ? rp.slice(0, idx + 1) : ""
+  })()
+
+  function relativeToViewer(file: ParsedFile): string {
+    const rp = file.relativePath || file.filename
+    if (viewerDir && rp.startsWith(viewerDir)) return rp.slice(viewerDir.length)
+    return rp
+  }
+
   // 1. Direct relativePath suffix match
   // 2. Templated-prefix match (e.g. viewer says "processed/slide_" → match any
-  //    file whose relativePath endsWith "processed/slide_NN.html")
+  //    file whose path relative to viewer endsWith "processed/slide_NN.html")
   // 3. Plain filename match (no relativePath)
 
   const refsByFile = new Map<string, ParsedFile>()
@@ -591,7 +609,7 @@ export function expandViewerReferences(
 
   // If viewer declares static refs like "processed/slide_00.html", try exact match.
   for (const file of otherFiles) {
-    const rPath = file.relativePath || file.filename
+    const rPath = relativeToViewer(file)
     for (const ref of viewerRefs) {
       if (rPath === ref || rPath.endsWith("/" + ref) || rPath.endsWith(ref)) {
         if (!refsByFile.has(file.filename)) refsByFile.set(file.filename, file)
@@ -610,13 +628,13 @@ export function expandViewerReferences(
   }
 
   // 2. Templated prefix: a ref like "processed/slide_" means any file matching
-  //    "processed/slide_<digits>.html"
+  //    "processed/slide_<digits>.html" (relative to the viewer file).
   const isTemplated = (r: string) => /[_-]$/.test(r) || r.length < 14
   const templatedRefs = viewerRefs.filter(isTemplated)
   if (templatedRefs.length > 0) {
     const matched = new Set<string>()
     for (const file of otherFiles) {
-      const rPath = file.relativePath || file.filename
+      const rPath = relativeToViewer(file)
       for (const prefix of templatedRefs) {
         // match: "processed/slide_NN.html" against prefix "processed/slide_"
         if (rPath.startsWith(prefix) && /\.html?$/i.test(rPath)) {
