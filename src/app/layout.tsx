@@ -4,15 +4,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "next-themes";
 
-// P2-6: force every route through middleware. Prerendered static HTML
-// bypasses middleware entirely in standalone mode, which would defeat our
-// `Cache-Control: no-store` rewrite (the browser would keep serving stale
-// prerendered HTML with chunk hashes from a previous build → 404
-// ChunkLoadError). Marking the layout as `force-dynamic` makes the route
-// segment render on every request, so middleware runs each time.
-export const dynamic = "force-dynamic"
-export const revalidate = 0
-
 // System font stack — avoids Google Fonts CDN dependency (offline-safe).
 // Per macOS preference: PingFang SC / Songti SC / Helvetica Neue fallbacks.
 const fontSans = {
