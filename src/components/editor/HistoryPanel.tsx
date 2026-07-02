@@ -47,10 +47,13 @@ export function HistoryPanel() {
 
   return (
     <div className="border-t-2 border-primary/10 bg-gradient-to-b from-muted/30 to-background shrink-0">
-      {/* Header */}
-      <button
+      {/* Header — using div instead of button to avoid nested button hydration error */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-1.5 px-3 py-2.5 hover:bg-muted/50 transition-colors text-left group"
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded(!expanded) } }}
+        className="w-full flex items-center gap-1.5 px-3 py-2.5 hover:bg-muted/50 transition-colors text-left group cursor-pointer"
       >
         {expanded ? (
           <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
@@ -119,7 +122,7 @@ export function HistoryPanel() {
           </div>
           )}
         </div>
-      </button>
+      </div>
 
       {/* Timeline */}
       {expanded && (

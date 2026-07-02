@@ -2,7 +2,7 @@
 
 import React from "react"
 import { useEditor } from "@/store/editor-store"
-import type { EditorElement, TextElement, ShapeElement, ImageElement } from "@/types/editor"
+import type { EditorElement, TextElement, ShapeElement, ImageElement, Slide } from "@/types/editor"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -24,9 +24,29 @@ import { cn } from "@/lib/utils"
 export function PropertyPanel() {
   const { selectedIds, currentSlide, updateElement, bringToFront, sendToBack } = useEditor()
   const slide = currentSlide()
+  // Defensive: empty editor (no slide loaded yet). Render a friendly placeholder
+  // instead of crashing on `slide.elements.filter(...)` below.
+  if (!slide) {
+    return (
+      <div className="w-72 border-l border-border/40 flex flex-col h-full" style={{ background: "linear-gradient(to bottom, rgba(245,243,255,0.85), rgba(255,255,255,0.7), rgba(253,242,248,0.75))" }}>
+        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4 text-center">
+          No slide loaded
+        </div>
+        <SpeakerNotesPanel compact />
+      </div>
+    )
+  }
   const selected = slide.elements.filter((e) => selectedIds.includes(e.id))
   let content: React.ReactNode
-  if (selected.length === 0) {
+  if (slide.rawHtml) {
+    // Exact mode: if an overlay element is selected (selectedIds has a sf- id),
+    // show its properties. Otherwise show the ExactModePanel.
+    if (selected.length === 1 && selected[0].id.startsWith("sf-")) {
+      content = <SingleElementPanel key={selected[0].id} element={selected[0]} updateElement={updateElement} bringToFront={bringToFront} sendToBack={sendToBack} />
+    } else {
+      content = <ExactModePanel slide={slide} />
+    }
+  } else if (selected.length === 0) {
     content = <EmptyPanel />
   } else if (selected.length > 1) {
     content = <MultiSelectPanel count={selected.length} />
@@ -35,9 +55,40 @@ export function PropertyPanel() {
     content = <SingleElementPanel key={el.id} element={el} updateElement={updateElement} bringToFront={bringToFront} sendToBack={sendToBack} />
   }
   return (
-    <div className="w-72 border-l bg-background flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto">{content}</div>
+    <div className="w-72 border-l border-border/40 flex flex-col h-full" style={{ background: "linear-gradient(to bottom, rgba(245,243,255,0.85), rgba(255,255,255,0.7), rgba(253,242,248,0.75))" }}>
+      <div className="flex-1 overflow-y-auto sf-layers-scroll">{content}</div>
       <SpeakerNotesPanel compact />
+    </div>
+  )
+}
+
+function ExactModePanel({ slide }: { slide: Slide }) {
+  const { setSlideBackground } = useEditor()
+  return (
+    <div className="h-full">
+      <div className="p-4 border-b">
+        <h3 className="text-sm font-semibold mb-2">Exact Mode (100% Fidelity)</h3>
+        <div className="text-xs text-muted-foreground space-y-2">
+          <p>✓ <strong>Click text</strong> to edit directly — changes save in real-time.</p>
+          <p>✓ <strong>Click + drag</strong> any element to move it (5px threshold distinguishes click from drag).</p>
+          <p>✓ <strong>Click to select</strong> → drag purple handles to resize.</p>
+          <p>✓ <strong>Double-click</strong> to enter text editing for a specific element.</p>
+          <p>✓ All CSS variables, fonts, and layouts are preserved from the original HTML.</p>
+          <p>✓ Use Export HTML to download the edited slide.</p>
+        </div>
+      </div>
+      <div className="p-4 border-b">
+        <h4 className="text-xs font-semibold mb-2 text-muted-foreground">SLIDE INFO</h4>
+        <div className="text-xs space-y-1">
+          <div>Name: <span className="text-foreground">{slide.name}</span></div>
+          <div>Elements: <span className="text-foreground">{slide.elements.length}</span></div>
+          <div>Mode: <span className="text-foreground">Exact (iframe)</span></div>
+        </div>
+      </div>
+      <div className="p-4 border-b">
+        <h4 className="text-xs font-semibold mb-2 text-muted-foreground">BACKGROUND</h4>
+        <ColorField label="Background Color" value={slide.background} onChange={(c) => setSlideBackground(slide.id, c)} />
+      </div>
     </div>
   )
 }
@@ -45,6 +96,7 @@ export function PropertyPanel() {
 function EmptyPanel() {
   const { currentSlide, setSlideBackground } = useEditor()
   const slide = currentSlide()
+  if (!slide) return null
   return (
     <div className="h-full">
       <div className="p-4 border-b">
@@ -97,29 +149,103 @@ function SingleElementPanel({
   bringToFront: (id: string) => void
   sendToBack: (id: string) => void
 }) {
-  const { updateElement: update } = useEditor()
+  const { updateElement: update, currentSlide, setSlideRawHtml } = useEditor()
   function set<K extends keyof EditorElement>(key: K, value: EditorElement[K]) {
     update(element.id, { [key]: value } as Partial<EditorElement>)
+    // If this is an Exact-mode overlay element (sf- prefix), also update
+    // the corresponding iframe element and sync to rawHtml
+    if (element.id.startsWith("sf-")) {
+      const slide = currentSlide()
+      if (!slide || !slide.rawHtml) return
+      const canvas = document.getElementById("editor-canvas")
+      const iframe = canvas?.querySelector("iframe")
+      if (!iframe) return
+      try {
+        const doc = iframe.contentDocument
+        if (!doc) return
+        const el = doc.querySelector(`[data-sf-id="${element.id}"]`) as HTMLElement
+        if (!el) return
+        // Apply the property change to the iframe element
+        if (key === "text" && typeof value === "string") {
+          el.textContent = value
+        } else if (key === "x" || key === "y") {
+          // Use transform (not position:absolute + left/top) to avoid
+          // offsetParent coordinate-system mismatches. The drag handler
+          // also uses transform — this keeps the two in sync.
+          // Compute the delta from the current overlay position and add
+          // it to the existing transform.
+          const delta = (value as number) - (key === "x" ? element.x : element.y)
+          const existing = el.style.transform || ""
+          const match = existing.match(/translate\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px\s*\)/)
+          const currentTx = match ? parseFloat(match[1]) : 0
+          const currentTy = match ? parseFloat(match[2]) : 0
+          const newTx = key === "x" ? currentTx + delta : currentTx
+          const newTy = key === "y" ? currentTy + delta : currentTy
+          el.style.transform = `translate(${newTx}px, ${newTy}px)`
+        } else if (key === "width") {
+          el.style.width = value + "px"
+        } else if (key === "height") {
+          el.style.height = value + "px"
+        } else if (key === "fontSize" && typeof value === "number") {
+          el.style.fontSize = value + "px"
+        } else if (key === "color" && typeof value === "string") {
+          el.style.color = value
+        } else if (key === "fontFamily" && typeof value === "string") {
+          el.style.fontFamily = value
+        } else if (key === "fontWeight" && typeof value === "string") {
+          el.style.fontWeight = value
+        } else if (key === "fontStyle") {
+          el.style.fontStyle = value as string
+        } else if (key === "textAlign") {
+          el.style.textAlign = value as string
+        } else if (key === "fill" && typeof value === "string") {
+          if (value !== "transparent") el.style.background = value
+        }
+        // Sync the updated HTML back to rawHtml WITHOUT triggering an iframe
+        // reload. The iframe DOM is already up-to-date (we just set the style
+        // directly above). Reloading would cause overlays to disappear briefly
+        // and potentially lose differently-colored child overlays (like "5分钟")
+        // if the color-aware dedup re-evaluates with changed colors.
+        // We update lastHtml.current on the RawHtmlFrame to prevent the reload
+        // useEffect from firing.
+        const newHtml = "<!DOCTYPE html>\n" + doc.documentElement.outerHTML
+        // Find the RawHtmlFrame's iframe and update its lastHtml ref
+        const canvas = document.getElementById("editor-canvas")
+        const iframeEl = canvas?.querySelector("iframe")
+        if (iframeEl) {
+          // Mark that we've already applied this change to the iframe DOM,
+          // so the useEffect won't reload. We do this by updating the
+          // lastHtml ref via a custom property.
+          ;(iframeEl as any)._sfLastHtml = newHtml
+        }
+        setSlideRawHtml(slide.id, newHtml)
+      } catch (e) {
+        // iframe not accessible — ignore
+      }
+    }
   }
 
   return (
     <div className="h-full">
-      <div className="p-4 border-b">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold capitalize">{element.type}</h3>
+      <div className="p-4 border-b border-border/40 bg-muted/15">
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-gradient-to-br from-pink-500 to-purple-600" />
+            <h3 className="text-sm font-semibold capitalize tracking-tight">{element.type}</h3>
+          </div>
           <div className="flex gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => set("locked", !element.locked)}>
-              {element.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-background" onClick={() => set("locked", !element.locked)}>
+              {element.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5 opacity-50" />}
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => set("visible", !element.visible)}>
-              {element.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-background" onClick={() => set("visible", !element.visible)}>
+              {element.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5 opacity-50" />}
             </Button>
           </div>
         </div>
         <Input
           value={element.name}
           onChange={(e) => set("name", e.target.value)}
-          className="h-8 text-sm"
+          className="h-8 text-sm bg-background/60 border-border/40"
         />
       </div>
 
@@ -225,6 +351,16 @@ function TextProps({
 }) {
   return (
     <Section title="Text">
+      {/* Text content editor — live updates the canvas as you type */}
+      <div>
+        <Label className="text-xs">Content</Label>
+        <textarea
+          value={element.text}
+          onChange={(e) => set("text", e.target.value as EditorElement["text"])}
+          className="w-full mt-1 min-h-[80px] max-h-[200px] text-xs font-mono p-2 rounded border resize-y bg-background"
+          placeholder="Enter text..."
+        />
+      </div>
       <div>
         <Label className="text-xs">Font Family</Label>
         <Select value={element.fontFamily} onValueChange={(v) => set("fontFamily", v)}>
@@ -414,6 +550,27 @@ function TextProps({
           </div>
         </div>
       )}
+
+      {/* Wrapping toggle — auto-detected on import, user can override */}
+      <Label className="text-xs mt-3 block">Wrapping</Label>
+      <div className="flex gap-1 mt-1">
+        <Toggle
+          pressed={element.wrap !== false}
+          onPressedChange={() => set("wrap", true)}
+          className="h-8 flex-1 text-[11px]"
+          title="Wrap text inside the box (paragraphs, body text)"
+        >
+          Wrap
+        </Toggle>
+        <Toggle
+          pressed={element.wrap === false}
+          onPressedChange={() => set("wrap", false)}
+          className="h-8 flex-1 text-[11px]"
+          title="Keep text on a single line (headings, labels)"
+        >
+          Single line
+        </Toggle>
+      </div>
     </Section>
   )
 }
@@ -475,8 +632,8 @@ function ImageProps({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="p-4 border-b space-y-2">
-      <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">{title}</h4>
+    <div className="p-4 border-b border-border/40 space-y-2.5">
+      <h4 className="text-[10px] font-bold uppercase text-muted-foreground/80 tracking-wider">{title}</h4>
       {children}
     </div>
   )

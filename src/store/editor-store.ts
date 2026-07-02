@@ -75,6 +75,7 @@ export function createTextElement(
     listType: "none",
     listStyle: "disc",
     listIndent: 0,
+    wrap: true,
     name: "Text",
     ...partial,
   } as TextElement
@@ -385,6 +386,7 @@ interface EditorState {
   setCurrentSlide: (id: string) => void
   reorderSlides: (from: number, to: number) => void
   setSlideBackground: (id: string, bg: string) => void
+  setSlideRawHtml: (id: string, rawHtml: string) => void
   setSlideName: (id: string, name: string) => void
   setSlideNotes: (id: string, notes: string) => void
   setSlideTransition: (id: string, transition: "none" | "fade" | "slide" | "zoom" | "inherit") => void
@@ -407,6 +409,7 @@ interface EditorState {
   jumpToHistory: (index: number) => void
   /** Clear all history (past + future) */
   clearHistory: () => void
+  pushHistorySnapshot: (label: string, icon?: string) => void
   // import / replace
   replaceSlides: (slides: Slide[]) => void
   loadProject: (data: { slides: Slide[]; currentSlideId?: string | null }) => void
@@ -909,6 +912,17 @@ export const useEditor = create<EditorState>((set, get) => ({
     })
   },
 
+  setSlideRawHtml: (id, rawHtml) => {
+    set((s) => {
+      const slides = s.slides.map((sl) =>
+        sl.id === id ? { ...sl, rawHtml } : sl,
+      )
+      // Don't push history on every keystroke — only on significant changes
+      // History is pushed by the caller when needed (e.g. on blur)
+      return { slides }
+    })
+  },
+
   setSlideName: (id, name) => {
     set((s) => {
       const slides = s.slides.map((sl) =>
@@ -1075,6 +1089,7 @@ export const useEditor = create<EditorState>((set, get) => ({
           listType: t.listType,
           listStyle: t.listStyle,
           listIndent: t.listIndent,
+          wrap: t.wrap,
         })
       }
       return { formatClipboard: formatProps }
@@ -1121,6 +1136,7 @@ export const useEditor = create<EditorState>((set, get) => ({
               if (fmt.listType !== undefined) (patch as Partial<TextElement>).listType = fmt.listType! as TextElement["listType"]
               if (fmt.listStyle !== undefined) (patch as Partial<TextElement>).listStyle = fmt.listStyle! as TextElement["listStyle"]
               if (fmt.listIndent !== undefined) (patch as Partial<TextElement>).listIndent = fmt.listIndent!
+              if (fmt.wrap !== undefined) (patch as Partial<TextElement>).wrap = fmt.wrap
             }
             return { ...el, ...patch } as EditorElement
           }),
@@ -1138,6 +1154,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => {
       if (s.past.length === 0) return s
       const previousEntry = s.past[s.past.length - 1]
+      // Guard against corrupted history entries (slides may be undefined
+      // if a history snapshot was taken at the wrong time)
+      if (!previousEntry || !previousEntry.slides || previousEntry.slides.length === 0) {
+        return { past: s.past.slice(0, -1) }
+      }
       const past = s.past.slice(0, -1)
       const future = [makeHistoryEntry(s.slides, "Current state", "Circle"), ...s.future].slice(0, 50)
       const currentSlideId =
@@ -1159,6 +1180,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => {
       if (s.future.length === 0) return s
       const nextEntry = s.future[0]
+      if (!nextEntry || !nextEntry.slides || nextEntry.slides.length === 0) {
+        return { future: s.future.slice(1) }
+      }
       const future = s.future.slice(1)
       const past = [...s.past, makeHistoryEntry(s.slides, "Before redo", "RotateCcw")].slice(-50)
       const currentSlideId =
@@ -1235,6 +1259,13 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   clearHistory: () => {
     set({ past: [], future: [] })
+  },
+
+  pushHistorySnapshot: (label, icon) => {
+    set((s) => ({
+      past: pushHistory(s.past, s.slides, label, icon || "Circle"),
+      future: [],
+    }))
   },
 
   replaceSlides: (slides) => {

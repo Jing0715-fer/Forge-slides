@@ -29,11 +29,11 @@ export function StatusBar() {
   ).size
 
   return (
-    <div className="h-6 border-t bg-background flex items-center px-3 text-[11px] text-muted-foreground gap-3 shrink-0 select-none">
+    <div className="h-7 border-t border-border/40 backdrop-blur-sm flex items-center px-3 text-[11px] text-muted-foreground gap-3 shrink-0 select-none" style={{ background: "linear-gradient(to right, rgba(253,242,248,0.55), rgba(255,255,255,0.45), rgba(245,243,255,0.55))" }}>
       {/* Left: slide info */}
       <div className="flex items-center gap-1.5">
-        <span className="font-mono tabular-nums">
-          Slide {slideIdx + 1}/{slides.length}
+        <span className="font-mono tabular-nums font-medium">
+          Slide {slideIdx + 1}<span className="text-muted-foreground/50">/</span>{slides.length}
         </span>
       </div>
 
@@ -82,8 +82,8 @@ export function StatusBar() {
           <button
             onClick={toggleMasterVisible}
             className={cn(
-              "flex items-center gap-1 transition-colors hover:text-foreground",
-              masterVisible ? "text-amber-500" : "text-muted-foreground/40",
+              "flex items-center gap-1 transition-colors hover:text-foreground px-1.5 py-0.5 rounded",
+              masterVisible ? "text-amber-500 bg-amber-500/10" : "text-muted-foreground/40 hover:bg-muted",
             )}
             title={`${masterVisible ? "Hide" : "Show"} master elements (${masterElements.length})`}
           >
@@ -93,8 +93,8 @@ export function StatusBar() {
         )}
         <div
           className={cn(
-            "flex items-center gap-1 transition-colors",
-            showGuides ? "text-primary" : "text-muted-foreground/60",
+            "flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded",
+            showGuides ? "text-primary bg-primary/10" : "text-muted-foreground/60 hover:bg-muted",
           )}
           title="Smart guides"
         >
@@ -103,8 +103,8 @@ export function StatusBar() {
         </div>
         <div
           className={cn(
-            "flex items-center gap-1 transition-colors",
-            showGrid ? "text-primary" : "text-muted-foreground/60",
+            "flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded",
+            showGrid ? "text-primary bg-primary/10" : "text-muted-foreground/60 hover:bg-muted",
           )}
           title="Grid"
         >
@@ -112,7 +112,7 @@ export function StatusBar() {
           <span>Grid</span>
         </div>
         <span className="text-border">·</span>
-        <span className="font-mono tabular-nums">{Math.round(zoom * 100)}%</span>
+        <span className="font-mono tabular-nums font-medium">{Math.round(zoom * 100)}%</span>
       </div>
     </div>
   )

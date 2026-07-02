@@ -208,8 +208,8 @@ export function PresentationMode({ open, onOpenChange }: Props) {
           <div
             className="absolute top-0 left-0 origin-top-left"
             style={{
-              width: CANVAS_WIDTH,
-              height: CANVAS_HEIGHT,
+              width: slide.width || CANVAS_WIDTH,
+              height: slide.height || CANVAS_HEIGHT,
               transform: `scale(${scaleFactor})`,
             }}
           >

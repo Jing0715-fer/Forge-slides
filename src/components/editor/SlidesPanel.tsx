@@ -3,7 +3,6 @@
 import React, { useState, useRef } from "react"
 import { useEditor, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/store/editor-store"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Plus, Copy, Trash2, LayoutTemplate, GripVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -79,8 +78,8 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
   }
 
   return (
-    <div className="h-28 border-t bg-background flex flex-col shrink-0">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b">
+    <div className="h-28 border-t border-border/40 flex flex-col shrink-0" style={{ background: "linear-gradient(to bottom, rgba(245,243,255,0.8), rgba(255,255,255,0.6), rgba(253,242,248,0.7))" }}>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/40" style={{ background: "linear-gradient(to right, rgba(245,243,255,0.9), rgba(253,242,248,0.7))" }}>
         <h3 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-1.5">
           Slides
           <span className="text-[10px] font-normal text-muted-foreground/70 normal-case tracking-normal">
@@ -94,7 +93,7 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 gap-1 text-xs"
+                  className="h-7 gap-1 text-xs hover:bg-background"
                   onClick={() => onNewFromTemplate ? onNewFromTemplate() : addSlide()}
                 >
                   <LayoutTemplate className="w-3 h-3" /> Template
@@ -104,7 +103,7 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={addSlide}>
+                <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-background" onClick={addSlide}>
                   <Plus className="w-3 h-3" /> Blank
                 </Button>
               </TooltipTrigger>
@@ -113,8 +112,8 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
           </TooltipProvider>
         </div>
       </div>
-      <ScrollArea className="flex-1">
-        <div className="flex gap-2 p-2 overflow-x-auto" onDragLeave={handleDragLeave}>
+      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden sf-layers-scroll">
+        <div className="flex gap-2 p-2 h-full" onDragLeave={handleDragLeave}>
           {slides.map((slide, idx) => {
             const isDragging = dragIndex === idx
             const showBeforeIndicator = overIndex === idx && overPosition === "before" && dragIndex !== null && dragIndex !== idx
@@ -135,8 +134,8 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                   onDragEnd={handleDragEnd}
                   onClick={() => setCurrentSlide(slide.id)}
                   className={cn(
-                    "slide-thumb group relative w-32 h-[72px] rounded border-2 cursor-pointer shrink-0 overflow-hidden transition-all",
-                    currentSlideId === slide.id ? "border-primary active" : "border-border hover:border-muted-foreground/40",
+                    "slide-thumb group relative w-32 h-[72px] rounded-md border-2 cursor-pointer shrink-0 overflow-hidden transition-all hover:shadow-md",
+                    currentSlideId === slide.id ? "border-primary active shadow-sm shadow-primary/30" : "border-border hover:border-muted-foreground/40",
                     isDragging && "opacity-40 scale-95",
                     overIndex === idx && dragIndex !== null && dragIndex !== idx && "ring-2 ring-primary/40",
                   )}
@@ -144,7 +143,7 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                 >
                   {/* Drag handle (visible on hover) */}
                   <div
-                    className="absolute top-1/2 -translate-y-1/2 left-0.5 z-20 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing bg-black/30 hover:bg-black/50 rounded p-0.5 text-white transition-opacity"
+                    className="absolute top-1/2 -translate-y-1/2 left-0.5 z-20 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing bg-black/40 hover:bg-black/60 backdrop-blur-sm rounded p-0.5 text-white transition-opacity"
                     title="Drag to reorder"
                   >
                     <GripVertical className="w-2.5 h-2.5" />
@@ -158,7 +157,15 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                       transform: `scale(${128 / CANVAS_WIDTH})`,
                     }}
                   >
-                    {slide.elements.slice().sort((a, b) => a.zIndex - b.zIndex).map((el) => (
+                    {slide.rawHtml ? (
+                      <iframe
+                        className="absolute top-0 left-0 border-none"
+                        style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, pointerEvents: "none" }}
+                        srcDoc={slide.rawHtml}
+                        sandbox="allow-same-origin"
+                        title={`Slide ${idx + 1} preview`}
+                      />
+                    ) : slide.elements.slice().sort((a, b) => a.zIndex - b.zIndex).map((el) => (
                       <div
                         key={el.id}
                         className="absolute"
@@ -195,15 +202,15 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                     ))}
                   </div>
                   {/* Slide number */}
-                  <div className="absolute top-1 left-1 text-[10px] font-mono bg-black/40 text-white rounded px-1">
+                  <div className="absolute top-1 left-1 text-[10px] font-mono font-medium bg-black/50 backdrop-blur-sm text-white rounded px-1.5 py-0.5">
                     {idx + 1}
                   </div>
                   {/* Hover controls */}
-                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex gap-0.5">
+                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
                     <Button
                       variant="secondary"
                       size="icon"
-                      className="h-5 w-5"
+                      className="h-5 w-5 bg-black/50 backdrop-blur-sm hover:bg-black/70 text-white border-none"
                       onClick={(e) => { e.stopPropagation(); duplicateSlide(slide.id) }}
                     >
                       <Copy className="w-2.5 h-2.5" />
@@ -212,7 +219,7 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                       <Button
                         variant="secondary"
                         size="icon"
-                        className="h-5 w-5 hover:bg-destructive hover:text-destructive-foreground"
+                        className="h-5 w-5 bg-black/50 backdrop-blur-sm hover:bg-red-600 text-white border-none"
                         onClick={(e) => { e.stopPropagation(); removeSlide(slide.id) }}
                       >
                         <Trash2 className="w-2.5 h-2.5" />
@@ -227,7 +234,7 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
             )
           })}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }

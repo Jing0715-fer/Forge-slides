@@ -15,6 +15,10 @@ import { PresentationMode } from "./PresentationMode"
 import { CanvasContextMenu } from "./CanvasContextMenu"
 import { SlideContextMenu } from "./SlideContextMenu"
 import { StatusBar } from "./StatusBar"
+import { SaveTemplateDialog } from "./SaveTemplateDialog"
+import { TemplateManagerDialog } from "./TemplateManagerDialog"
+import { AiGenerateDialog } from "./AiGenerateDialog"
+import { AiHistoryDialog } from "./AiHistoryDialog"
 import { Toaster } from "@/components/ui/sonner"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -25,22 +29,36 @@ import { Clock, RotateCcw, X, ArrowLeft } from "lucide-react"
 
 interface EditorProps {
   initialImportOpen?: boolean
+  initialAiGenerateOpen?: boolean
   onExit?: () => void
+  /** Skip the restore session banner (used when data is already loaded from landing page) */
+  skipRestoreBanner?: boolean
 }
 
-export function Editor({ initialImportOpen, onExit }: EditorProps = {}) {
+export function Editor({ initialImportOpen, initialAiGenerateOpen, onExit, skipRestoreBanner }: EditorProps = {}) {
   const [importOpen, setImportOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [findReplaceOpen, setFindReplaceOpen] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
   const [presentationOpen, setPresentationOpen] = useState(false)
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false)
+  const [templateManagerOpen, setTemplateManagerOpen] = useState(false)
+  const [aiGenerateOpen, setAiGenerateOpen] = useState(false)
+  const [aiHistoryOpen, setAiHistoryOpen] = useState(false)
 
   // Open import dialog if requested from landing page
   const [prevInitialImport, setPrevInitialImport] = useState(false)
   if (initialImportOpen && !prevInitialImport) {
     setPrevInitialImport(true)
     setImportOpen(true)
+  }
+
+  // Open AI generate dialog if requested from landing page
+  const [prevInitialAi, setPrevInitialAi] = useState(false)
+  if (initialAiGenerateOpen && !prevInitialAi) {
+    setPrevInitialAi(true)
+    setAiGenerateOpen(true)
   }
 
   const {
@@ -248,13 +266,15 @@ export function Editor({ initialImportOpen, onExit }: EditorProps = {}) {
     : null
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-background">
-      <header className="h-10 border-b bg-background flex items-center px-4 gap-2 shrink-0">
+    <div className="h-screen w-screen flex flex-col overflow-hidden" style={{ background: "linear-gradient(135deg, #fdf2f8 0%, #fef5f3 30%, #f5f3ff 65%, #eff6ff 100%)" }}>
+      {/* Subtle top gradient strip for depth */}
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent pointer-events-none z-50" />
+      <header className="h-11 border-b border-border/40 backdrop-blur-xl flex items-center px-4 gap-2 shrink-0" style={{ background: "linear-gradient(to right, rgba(253,242,248,0.85), rgba(255,255,255,0.65), rgba(245,243,255,0.85))" }}>
         {onExit && (
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 gap-1 text-xs px-2 -ml-1"
+            className="h-7 gap-1 text-xs px-2 -ml-1 hover:bg-muted"
             onClick={onExit}
             title="Back to home"
           >
@@ -263,21 +283,24 @@ export function Editor({ initialImportOpen, onExit }: EditorProps = {}) {
           </Button>
         )}
         <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold shadow-sm">S</div>
-          <span className="font-semibold text-sm">SlideForge</span>
+          <div className="w-5 h-5 rounded bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold shadow-sm shadow-purple-500/30">S</div>
+          <span className="font-semibold text-sm tracking-tight">SlideForge</span>
+          <span className="text-xs text-muted-foreground hidden sm:inline">·</span>
           <span className="text-xs text-muted-foreground hidden sm:inline">PowerPoint-like HTML editor</span>
         </div>
         <div className="ml-auto flex items-center gap-3">
           {pending ? (
-            <span className="text-xs text-amber-600 flex items-center gap-1">
-              <Clock className="w-3 h-3 animate-pulse" /> Saving…
+            <span className="text-xs text-amber-600 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              <span>Saving…</span>
             </span>
           ) : lastSavedText ? (
-            <span className="text-xs text-muted-foreground hidden md:inline">
-              Saved {lastSavedText}
+            <span className="text-xs text-muted-foreground hidden md:inline flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+              <span>Saved {lastSavedText}</span>
             </span>
           ) : null}
-          <span className="text-xs text-muted-foreground hidden lg:block">
+          <span className="text-xs text-muted-foreground/70 hidden lg:block">
             Drag · Snap · Double-click to edit
           </span>
         </div>
@@ -290,18 +313,24 @@ export function Editor({ initialImportOpen, onExit }: EditorProps = {}) {
         onFindReplace={() => setFindReplaceOpen(true)}
         onPngExport={handlePngExport}
         onPresent={() => setPresentationOpen(true)}
+        onSaveTemplate={() => setSaveTemplateOpen(true)}
+        onOpenTemplates={() => setTemplateManagerOpen(true)}
+        onAiGenerate={() => setAiGenerateOpen(true)}
+        onAiHistory={() => setAiHistoryOpen(true)}
       />
-      {restoreData && (
-        <div className="bg-primary/10 border-b border-primary/20 px-4 py-2 flex items-center gap-3 text-sm">
-          <RotateCcw className="w-4 h-4 text-primary" />
+      {restoreData && !skipRestoreBanner && (
+        <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b border-primary/20 px-4 py-2.5 flex items-center gap-3 text-sm">
+          <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+            <RotateCcw className="w-3.5 h-3.5 text-primary" />
+          </div>
           <span>
             Found a saved session from{" "}
             <strong>{new Date(restoreData.savedAt).toLocaleString()}</strong> with{" "}
             {restoreData.slides.length} slide(s). Restore it?
           </span>
           <div className="ml-auto flex gap-2">
-            <Button size="sm" variant="default" onClick={acceptRestore}>Restore</Button>
-            <Button size="sm" variant="ghost" onClick={dismissRestore}>
+            <Button size="sm" variant="default" onClick={acceptRestore} className="shadow-sm">Restore</Button>
+            <Button size="sm" variant="ghost" onClick={dismissRestore} className="h-8 w-8 p-0">
               <X className="w-3.5 h-3.5" />
             </Button>
           </div>
@@ -322,6 +351,10 @@ export function Editor({ initialImportOpen, onExit }: EditorProps = {}) {
       <FindReplaceDialog open={findReplaceOpen} onOpenChange={setFindReplaceOpen} />
       <TemplatePickerDialog open={templateOpen} onOpenChange={setTemplateOpen} />
       <PresentationMode open={presentationOpen} onOpenChange={setPresentationOpen} />
+      <SaveTemplateDialog open={saveTemplateOpen} onOpenChange={setSaveTemplateOpen} />
+      <TemplateManagerDialog open={templateManagerOpen} onOpenChange={setTemplateManagerOpen} />
+      <AiGenerateDialog open={aiGenerateOpen} onOpenChange={setAiGenerateOpen} />
+      <AiHistoryDialog open={aiHistoryOpen} onOpenChange={setAiHistoryOpen} />
       <CanvasContextMenu />
       <SlideContextMenu />
       <Toaster richColors position="bottom-right" />

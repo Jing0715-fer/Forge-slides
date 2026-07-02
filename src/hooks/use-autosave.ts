@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useEditor } from "@/store/editor-store"
-import { saveToLocalStorage, loadFromLocalStorage, type AutosaveData } from "@/lib/persistence"
+import { saveToLocalStorage, loadFromLocalStorage, hasSavedSession, type AutosaveData } from "@/lib/persistence"
 
 const AUTOSAVE_DEBOUNCE_MS = 1500
 
@@ -12,18 +12,27 @@ export function useAutosave() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const initialized = useRef(false)
 
-  // Restore on mount — use lazy initializer pattern via useState to avoid
-  // calling setState during effect. We read localStorage synchronously.
-  const [initialRestore] = useState<AutosaveData | null>(() => {
-    if (typeof window === "undefined") return null
-    const saved = loadFromLocalStorage()
-    return saved && saved.slides.length > 0 ? saved : null
-  })
-  // Use initialRestore as the initial value of restoreData
-  const [restoreDataState, setRestoreDataState] = useState<AutosaveData | null>(initialRestore)
+  // Restore on mount — check localStorage synchronously for the "has session"
+  // flag, then load the full data asynchronously from IndexedDB if needed.
+  const [restoreDataState, setRestoreDataState] = useState<AutosaveData | null>(null)
 
   useEffect(() => {
-    initialized.current = true
+    if (typeof window === "undefined") return
+    let cancelled = false
+    // Quick synchronous check: is there a saved session?
+    if (!hasSavedSession()) {
+      initialized.current = true
+      return
+    }
+    // Load full data asynchronously (may read from IndexedDB for large projects)
+    loadFromLocalStorage().then((saved) => {
+      if (cancelled) return
+      if (saved && saved.slides.length > 0) {
+        setRestoreDataState(saved)
+      }
+      initialized.current = true
+    })
+    return () => { cancelled = true }
   }, [])
 
   // Debounced autosave whenever slides or masterElements change

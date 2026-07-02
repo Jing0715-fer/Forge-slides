@@ -10,7 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { useEditor, createContainerElement, createTextElement, createShapeElement, createImageElement } from "@/store/editor-store"
-import { parseHtmlToSlides, parseMultipleHtmlToSlides, type ParsedFile } from "@/lib/html-io"
+import { parseHtmlToSlides, parseHtmlToRawSlides, parseMultipleHtmlToSlides, loadFontsFromHtml, detectViewerSlideReferences, expandViewerReferences, isLikelyViewerFile, type ParsedFile } from "@/lib/html-io"
+import type { Slide } from "@/types/editor"
 import { toast } from "sonner"
 import {
   ClipboardPaste, FileUp, FolderUp, FileText, X, FileCheck2, AlertCircle, Sparkles,
@@ -40,23 +41,24 @@ interface Props {
 }
 
 type ImportTab = "paste" | "file" | "folder"
-type ParseMode = "smart" | "raw"
+type ParseMode = "exact" | "smart" | "raw"
 
 export function ImportHtmlDialog({ open, onOpenChange }: Props) {
   const [tab, setTab] = useState<ImportTab>("paste")
   const [html, setHtml] = useState(SAMPLE_HTML)
-  const [mode, setMode] = useState<ParseMode>("smart")
+  const [mode, setMode] = useState<ParseMode>("exact")
   const [pendingFiles, setPendingFiles] = useState<ParsedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [isParsing, setIsParsing] = useState(false)
   const { replaceSlides, addElement } = useEditor()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
+  const pasteTextareaRef = useRef<HTMLTextAreaElement>(null)
 
   const resetState = useCallback(() => {
     setPendingFiles([])
     setHtml(SAMPLE_HTML)
-    setMode("smart")
+    setMode("exact")
     setTab("paste")
     setIsDragging(false)
   }, [])
@@ -66,12 +68,22 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
     onOpenChange(open)
   }
 
-  // Read a single File object into a ParsedFile
+  // Read a single File object into a ParsedFile. We also capture the
+  // `webkitRelativePath` so that folder uploads retain their hierarchy
+  // (e.g. "知识库构建/processed/slide_00.html") — the viewer-detection
+  // logic in `expandViewerReferences` relies on this to resolve sibling
+  // references like `<iframe src="processed/slide_00.html">`.
   async function readFile(file: File): Promise<ParsedFile> {
     const text = await file.text()
+    // webkitRelativePath is a non-standard but widely-supported property
+    // that Chromium populates when the file is selected via a folder
+    // input. For single-file picks / drag-and-drop it stays empty, which
+    // is the expected fallback.
+    const relativePath = (file as any).webkitRelativePath || ""
     return {
       name: file.name.replace(/\.[^.]+$/, ""),
       filename: file.name,
+      relativePath: typeof relativePath === "string" ? relativePath : "",
       content: text,
       size: file.size,
     }
@@ -94,15 +106,67 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
       for (const file of allFiles) {
         parsed.push(await readFile(file))
       }
-      // Sort by filename for predictable ordering
-      parsed.sort((a, b) => a.filename.localeCompare(b.filename, undefined, { numeric: true, sensitivity: "base" }))
-      setPendingFiles(parsed)
-      toast.success(`Loaded ${parsed.length} HTML file${parsed.length === 1 ? "" : "s"}`)
+      // Sort by relativePath when available (so viewers + their referenced
+      // slides stay together), then by filename for a stable order.
+      parsed.sort((a, b) => {
+        const ap = a.relativePath || a.filename
+        const bp = b.relativePath || b.filename
+        return ap.localeCompare(bp, undefined, { numeric: true, sensitivity: "base" })
+      })
+
+      // Auto-detect "viewer" files (e.g. an index.html that loads
+      // sibling slides via JS / iframe). If we find one, expand the
+      // pending list to the actual slide files it references so a
+      // single-file import behaves like opening the deck in a browser.
+      const expanded = await expandForViewerReferences(parsed)
+      setPendingFiles(expanded)
     } catch (e) {
       toast.error("Failed to read files: " + (e as Error).message)
     } finally {
       setIsParsing(false)
     }
+  }
+
+  /**
+   * If the uploaded files include a "viewer" wrapper (e.g. `index.html`
+   * that loads sibling slides via JS), resolve the references and return
+   * just the actual slide files. The viewer itself is dropped from the
+   * list — it's not a slide, just a navigation shell. A toast announces
+   * the detection so the user understands what happened.
+   */
+  async function expandForViewerReferences(files: ParsedFile[]): Promise<ParsedFile[]> {
+    // Look for a viewer file. We accept index.html / index.htm with a
+    // small body that points at sibling slides.
+    const viewer = files.find(isLikelyViewerFile)
+    if (!viewer) {
+      toast.success(`Loaded ${files.length} HTML file${files.length === 1 ? "" : "s"}`)
+      return files
+    }
+
+    const refs = detectViewerSlideReferences(viewer.content)
+    if (refs.length === 0) {
+      toast.success(`Loaded ${files.length} HTML file${files.length === 1 ? "" : "s"}`)
+      return files
+    }
+
+    const result = expandViewerReferences(files, viewer, refs)
+    if (!result.viewerFilename || result.slides.length === 0) {
+      // The viewer declared refs but none of the uploaded files matched —
+      // fall back to importing everything we have so the user at least
+      // sees the viewer in the editor.
+      toast.success(
+        `Loaded ${files.length} HTML file${files.length === 1 ? "" : "s"} ` +
+        `(could not resolve ${viewer.filename}'s slide references — ` +
+        `folder upload required for multi-file decks)`,
+      )
+      return files
+    }
+
+    toast.success(
+      `Auto-loaded ${result.slides.length} slide${result.slides.length === 1 ? "" : "s"} ` +
+      `referenced by ${result.viewerFilename} (skipped the wrapper viewer)`,
+    )
+    return result.slides
   }
 
   function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -139,9 +203,21 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
     setIsParsing(true)
     try {
       if (tab === "paste") {
-        // Paste mode: use the textarea content
-        if (mode === "smart") {
-          const parsed = parseHtmlToSlides(html)
+        const htmlContent = (typeof window !== 'undefined' && (window as any).__importHtml) || pasteTextareaRef.current?.value || html
+        if (typeof window !== 'undefined') { (window as any).__importHtml = undefined }
+        loadFontsFromHtml(htmlContent)
+        if (mode === "exact") {
+          // Exact mode: 100% visual fidelity via iframe rendering
+          const parsed = parseHtmlToRawSlides(htmlContent)
+          if (parsed.length === 0) {
+            toast.error("No slides detected. Check your HTML.")
+            setIsParsing(false)
+            return
+          }
+          replaceSlides(parsed)
+          toast.success(`Imported ${parsed.length} slide(s) with 100% visual fidelity.`)
+        } else if (mode === "smart") {
+          const parsed = parseHtmlToSlides(htmlContent)
           if (parsed.length === 0) {
             toast.error("No slides detected. Check your HTML.")
             setIsParsing(false)
@@ -151,7 +227,7 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
           toast.success(`Imported ${parsed.length} slide(s).`)
         } else {
           addElement(
-            createContainerElement(html, {
+            createContainerElement(htmlContent, {
               x: 60,
               y: 60,
               width: 1160,
@@ -168,7 +244,28 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
           setIsParsing(false)
           return
         }
-        if (mode === "smart") {
+        if (mode === "exact") {
+          // Exact mode: 100% visual fidelity via iframe rendering
+          for (const file of pendingFiles) {
+            loadFontsFromHtml(file.content)
+          }
+          const allSlides: Slide[] = []
+          for (const file of pendingFiles) {
+            const parsed = parseHtmlToRawSlides(file.content)
+            allSlides.push(...parsed)
+          }
+          if (allSlides.length === 0) {
+            toast.error("No slides detected in the selected files.")
+            setIsParsing(false)
+            return
+          }
+          replaceSlides(allSlides)
+          toast.success(`Imported ${allSlides.length} slide(s) with 100% visual fidelity.`)
+        } else if (mode === "smart") {
+          // Load custom fonts from the HTML files
+          for (const file of pendingFiles) {
+            loadFontsFromHtml(file.content)
+          }
           const parsed = parseMultipleHtmlToSlides(pendingFiles)
           if (parsed.length === 0) {
             toast.error("No slides detected in the selected files.")
@@ -261,10 +358,11 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
 
           {/* Paste tab */}
           <TabsContent value="paste" className="flex-1 min-h-0 mt-3 flex flex-col">
-            <Textarea
-              value={html}
+            <textarea
+              ref={pasteTextareaRef}
+              defaultValue={html}
               onChange={(e) => setHtml(e.target.value)}
-              className="flex-1 min-h-[300px] font-mono text-xs"
+              className="flex-1 min-h-[300px] font-mono text-xs w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               placeholder="<section class='slide'>...</section>"
             />
           </TabsContent>
@@ -380,6 +478,15 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
           <span className="text-xs font-medium text-muted-foreground">Mode:</span>
           <div className="flex gap-1 bg-muted rounded-md p-0.5">
             <button
+              onClick={() => setMode("exact")}
+              className={cn(
+                "px-3 py-1 text-xs rounded transition-colors",
+                mode === "exact" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              Exact (100% Fidelity)
+            </button>
+            <button
               onClick={() => setMode("smart")}
               className={cn(
                 "px-3 py-1 text-xs rounded transition-colors",
@@ -399,7 +506,9 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
             </button>
           </div>
           <span className="text-[11px] text-muted-foreground/70 ml-1">
-            {mode === "smart"
+            {mode === "exact"
+              ? "Renders original HTML in iframe — pixel-perfect, no parsing artifacts."
+              : mode === "smart"
               ? "Extracts positioned text, shapes, and images as editable elements."
               : "Keeps HTML intact inside a container you can move/resize."}
           </span>

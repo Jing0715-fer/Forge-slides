@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu"
-import { FolderOpen, Download, Upload, FileJson, AlertTriangle } from "lucide-react"
+import { FolderOpen, Download, Upload, FileJson, AlertTriangle, Bookmark, Wand2, Library, History } from "lucide-react"
 import { toast } from "sonner"
 import { downloadProjectFile, readProjectFile } from "@/lib/project-io"
 import {
@@ -19,7 +19,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 
-export function ProjectMenu() {
+export function ProjectMenu({ onSaveTemplate, onOpenTemplates, onAiGenerate, onAiHistory }: { onSaveTemplate?: () => void; onOpenTemplates?: () => void; onAiGenerate?: () => void; onAiHistory?: () => void }) {
   const { slides, currentSlideId, masterElements, loadProject } = useEditor()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -91,8 +91,46 @@ export function ProjectMenu() {
             </div>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-xs">Templates & AI</DropdownMenuLabel>
+          {onSaveTemplate && (
+            <DropdownMenuItem onClick={onSaveTemplate} className="gap-2 cursor-pointer" disabled={slides.length === 0}>
+              <Bookmark className="w-3.5 h-3.5" />
+              <div className="flex flex-col">
+                <span>Save as Template</span>
+                <span className="text-[10px] text-muted-foreground">Analyze & store design style</span>
+              </div>
+            </DropdownMenuItem>
+          )}
+          {onOpenTemplates && (
+            <DropdownMenuItem onClick={onOpenTemplates} className="gap-2 cursor-pointer">
+              <Library className="w-3.5 h-3.5" />
+              <div className="flex flex-col">
+                <span>Template Library</span>
+                <span className="text-[10px] text-muted-foreground">View & manage saved templates</span>
+              </div>
+            </DropdownMenuItem>
+          )}
+          {onAiGenerate && (
+            <DropdownMenuItem onClick={onAiGenerate} className="gap-2 cursor-pointer">
+              <Wand2 className="w-3.5 h-3.5 text-primary" />
+              <div className="flex flex-col">
+                <span>Generate from Markdown</span>
+                <span className="text-[10px] text-muted-foreground">AI creates slides from .md + template</span>
+              </div>
+            </DropdownMenuItem>
+          )}
+          {onAiHistory && (
+            <DropdownMenuItem onClick={onAiHistory} className="gap-2 cursor-pointer">
+              <History className="w-3.5 h-3.5 text-primary" />
+              <div className="flex flex-col">
+                <span>AI Generation History</span>
+                <span className="text-[10px] text-muted-foreground">View & reload previous AI generations</span>
+              </div>
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
           <div className="px-2 py-1.5 text-[10px] text-muted-foreground">
-            Project files preserve all slides, elements, notes, and transitions.
+            Templates analyze your design tokens to generate matching AI slides.
           </div>
         </DropdownMenuContent>
       </DropdownMenu>

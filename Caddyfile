@@ -9,6 +9,10 @@
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}
 			header_up X-Real-IP {remote_host}
+			transport http {
+				dial_timeout 300s
+				response_header_timeout 300s
+			}
 		}
 	}
 
@@ -18,6 +22,10 @@
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}
 			header_up X-Real-IP {remote_host}
+			transport http {
+				dial_timeout 300s
+				response_header_timeout 300s
+			}
 		}
 	}
 }

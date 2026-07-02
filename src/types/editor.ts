@@ -55,6 +55,12 @@ export interface TextElement extends BaseElement {
   listType?: "none" | "bullet" | "number"
   listStyle?: "disc" | "circle" | "square" | "decimal" | "lower-alpha" | "upper-roman"
   listIndent?: number // px indentation for list items
+  // Text wrapping behavior:
+  //  - true  → text wraps naturally inside the box (paragraphs, long content)
+  //  - false → text stays on one line, no wrapping (headings, labels, short text)
+  // When importing HTML, this is auto-detected by comparing the text's natural
+  // single-line width to the rendered box width.
+  wrap?: boolean
 }
 
 export interface ShapeElement extends BaseElement {
@@ -92,6 +98,15 @@ export interface Slide {
   notes?: string
   // Transition type for presentation mode (overrides global setting if set)
   transition?: "none" | "fade" | "slide" | "zoom" | "inherit"
+  // Raw HTML mode: when set, the slide is rendered in an iframe for 100%
+  // visual fidelity (no parsing artifacts). The `elements` array is empty.
+  rawHtml?: string
+  // Per-slide canvas dimensions. Defaults to CANVAS_WIDTH × CANVAS_HEIGHT
+  // (1280×720) when unset. Imported AI decks that use larger layouts
+  // (e.g. Z.ai artifacts at 1280×900) set these so the canvas renders the
+  // full content without clipping.
+  width?: number
+  height?: number
 }
 
 // Alignment guide lines shown while dragging / resizing

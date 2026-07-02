@@ -28,9 +28,10 @@ interface Props {
   element: EditorElement
   selected: boolean
   editing: boolean
+  overlay?: boolean
 }
 
-export function CanvasElementView({ element, selected, editing }: Props) {
+export function CanvasElementView({ element, selected, editing, overlay }: Props) {
   const ref = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
   const [snapGuides, setSnapGuides] = useState<GuideLine[]>([])
@@ -433,7 +434,7 @@ export function CanvasElementView({ element, selected, editing }: Props) {
           if (element.type === "text") setEditing(element.id)
         }}
       >
-        {renderElementContent(element, editing, (text) =>
+        {renderElementContent(element, editing, overlay, (text) =>
           updateElement(element.id, { text } as Partial<TextElement>),
         )}
         {/* Selection ring overlay — dashed for grouped elements */}
@@ -529,6 +530,7 @@ function SnapGuidesView({ guides }: { guides: GuideLine[] }) {
 function renderElementContent(
   element: EditorElement,
   editing: boolean,
+  overlay: boolean | undefined,
   onTextChange: (text: string) => void,
 ): React.ReactNode {
   const shadowStyle: React.CSSProperties = element.shadow
@@ -540,13 +542,13 @@ function renderElementContent(
   const baseStyle: React.CSSProperties = {
     width: "100%",
     height: "100%",
-    background: element.fill,
-    border: element.strokeWidth && element.stroke && element.stroke !== "transparent"
-      ? `${element.strokeWidth}px solid ${element.stroke}`
-      : "none",
+    background: overlay ? "transparent" : element.fill,
+    border: overlay || (element.strokeWidth && element.stroke && element.stroke !== "transparent")
+      ? "none"
+      : `${element.strokeWidth}px solid ${element.stroke}`,
     borderRadius: element.borderRadius,
     ...shadowStyle,
-    overflow: "hidden",
+    overflow: "visible",
   }
 
   switch (element.type) {
@@ -561,19 +563,18 @@ function renderElementContent(
         fontStyle: t.fontStyle,
         textDecoration: t.textDecoration,
         textAlign: t.textAlign,
-        color: t.color,
+        color: overlay ? "transparent" : t.color,
         lineHeight: t.lineHeight,
         letterSpacing: t.letterSpacing,
         padding: t.padding,
-        display: "flex",
-        flexDirection: "column",
+        display: "block",
         justifyContent:
           t.verticalAlign === "top"
             ? "flex-start"
             : t.verticalAlign === "bottom"
               ? "flex-end"
               : "center",
-        background: t.fill,
+        background: overlay ? "transparent" : t.fill,
         border: "none",
         borderRadius: t.borderRadius,
         boxShadow: t.shadow ? shadowStyle.boxShadow : "none",
@@ -612,7 +613,7 @@ function renderElementContent(
           : (t.listStyle || "disc")
         const Tag = t.listType === "number" ? "ol" : "ul"
         return (
-          <div style={{ ...textStyle, display: "block", overflow: "hidden" }}>
+          <div style={{ ...textStyle, display: "block", overflow: "visible" }}>
             <Tag
               style={{
                 listStyleType,
@@ -629,18 +630,33 @@ function renderElementContent(
           </div>
         )
       }
-      return (
-        <div style={textStyle} className="whitespace-pre-wrap break-words">
-          {t.text}
-        </div>
-      )
+        // Wrapping behavior is driven by the `wrap` flag (auto-detected on import):
+        //  - wrap === false → single-line text (headings, labels): use nowrap so the
+        //    text never wraps even if the box is slightly narrower than the text.
+        //    overflow: visible lets the text paint without being clipped.
+        //  - wrap === true (default) → paragraphs / body text: use pre-wrap so the
+        //    text wraps naturally inside the box AND preserves explicit \n newlines.
+        //    word-break: break-word ensures CJK characters wrap correctly.
+        const shouldWrap = t.wrap !== false
+        return (
+          <div style={{
+            ...textStyle,
+            whiteSpace: shouldWrap ? "pre-wrap" : "nowrap",
+            wordBreak: shouldWrap ? "break-word" : "keep-all",
+            overflowWrap: shouldWrap ? "anywhere" : undefined,
+            overflow: "visible",
+          }}>
+            {t.text}
+          </div>
+        )
     }
     case "rect":
-      return <div style={baseStyle} />
+      return <div style={overlay ? { ...baseStyle, background: "transparent", border: "none", boxShadow: "none" } : baseStyle} />
     case "ellipse":
-      return <div style={{ ...baseStyle, borderRadius: "50%" }} />
+      return <div style={{ ...baseStyle, borderRadius: "50%", ...(overlay ? { background: "transparent", border: "none", boxShadow: "none" } : {}) }} />
     case "triangle": {
       const s = element as ShapeElement
+      if (overlay) return null // triangles are decorative; hide in overlay mode
       return (
         <svg width="100%" height="100%" viewBox={`0 0 ${s.width} ${s.height}`} preserveAspectRatio="none" style={{ overflow: "visible" }}>
           <polygon
@@ -654,6 +670,7 @@ function renderElementContent(
     }
     case "line": {
       const s = element as ShapeElement
+      if (overlay) return null
       return (
         <div
           style={{
@@ -669,6 +686,7 @@ function renderElementContent(
     }
     case "image": {
       const i = element as ImageElement
+      if (overlay) return null // iframe shows the image
       return (
         <img
           src={i.src}
@@ -685,6 +703,7 @@ function renderElementContent(
     }
     case "container": {
       const c = element as ContainerElement
+      if (overlay) return null // iframe shows the container content
       return (
         <div style={{ ...baseStyle }} dangerouslySetInnerHTML={{ __html: c.html || "" }} />
       )
