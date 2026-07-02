@@ -196,9 +196,8 @@ export function LandingPage({ onStart, onImport, hasSavedSession, onRestoreSessi
             <Button
               size="lg"
               variant="outline"
-              onClick={() => { if (onFolderImport && folderInputRef) { folderInputRef.current?.click() } else if (onFileImport && fileInputRef) { fileInputRef.current?.click() } else { onImport() } }}
+              onClick={() => { if (onFileImport && fileInputRef) { fileInputRef.current?.click() } else { onImport() } }}
               className="group gap-2 h-12 px-8 text-base border-2 hover:bg-muted/40 hover:border-primary/40 transition-all hover:scale-[1.02] active:scale-[0.98] rounded-xl"
-              title="Select a folder containing HTML slides (supports multi-file decks with index.html viewers)"
             >
               <Upload className="w-4 h-4 transition-transform group-hover:-translate-y-0.5" />
               Import HTML
