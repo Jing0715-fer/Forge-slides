@@ -81,6 +81,15 @@ export function parseHtmlToRawSlides(html: string): Slide[] {
     .map((l) => l.outerHTML)
     .join("\n")
 
+  // Collect external <script> tags (e.g. Tailwind CDN, GLM artifact proxy).
+  // These are critical for decks that rely on utility-class frameworks
+  // (Tailwind, UnoCSS, Windi CSS) or that proxy external scripts through
+  // artifact CDNs. Without these, all utility classes are no-ops and the
+  // slide renders with zero layout/styling.
+  const scriptTags = Array.from(doc.querySelectorAll("script[src]"))
+    .map((s) => s.outerHTML)
+    .join("\n")
+
   // Find slide sections (reuse the same detection logic).
   // Use exact `.slide` class match (not substring) so that "ppt-slide",
   // "current-slide", etc. don't get caught up.
@@ -129,21 +138,29 @@ export function parseHtmlToRawSlides(html: string): Slide[] {
     // imported decks (e.g. tailwind-generated "ppt-slide" decks) rely on
     // their own responsive sizing. The canvas <iframe> sizes itself to
     // match the rendered slide (see slide/raw-mode iframe wrapper).
+
+    // Clean the section HTML: remove layout-conflicting inline scripts
+    // (scaleSlide / AutoFit helpers that adjust body height and overflow
+    // for standalone viewer mode). These scripts are harmless no-ops in
+    // the viewer but actively break the editor's iframe layout by setting
+    // body.style.height, overflow: hidden, etc.
+    const cleanedSectionHtml = cleanSlideScripts(sectionHtml)
+
     const fullHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=1280, initial-scale=1.0">
 ${linkTags}
+${scriptTags}
 ${styleBlocks}
 <style>
   html, body { margin: 0; padding: 0; background: ${escapeForCssValue(detectedBg)}; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Songti SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; }
-  body { display: flex; align-items: flex-start; justify-content: center; }
-  .slide-stage, section.slide-stage, [data-slide] { display: block !important; }
+  body { min-height: 100%; overflow: visible; }
 </style>
 </head>
 <body>
-${sectionHtml}
+${cleanedSectionHtml}
 </body>
 </html>`
 
@@ -224,6 +241,54 @@ function matchSlideSections(doc: Document): Element[] {
     if (isAllowed(el)) out.push(el)
   }
   return out
+}
+
+/**
+ * Remove layout-conflicting scripts from a slide's HTML.
+ *
+ * Many AI-generated slide decks include inline JavaScript that adjusts the
+ * slide layout for standalone viewing: setting body height, overflow, and
+ * applying CSS transforms to fit content within a 720px viewport. These
+ * scripts are necessary in the original viewer (index.html + iframe) but
+ * actively break the editor's layout because:
+ *
+ *   - They set body.style.height = 720px + overflow: hidden, clipping content.
+ *   - They apply content.style.transform = scale(...), distorting elements.
+ *   - They call window.addEventListener("resize", ...) repeatedly.
+ *
+ * This function strips those scripts while preserving harmless ones
+ * (event handlers, data scripts, etc.).
+ */
+function cleanSlideScripts(sectionHtml: string): string {
+  // Regex that matches <script>...</script> blocks containing known
+  // layout-adjustment patterns. We match the ENTIRE script block so
+  // it's fully removed.
+  const layoutScriptPatterns = [
+    /MAX_H\s*=\s*\d+/,          // var MAX_H = 720
+    /\bscaleSlide\b/,            // function scaleSlide()
+    /\bAutoFit\b/,               // AutoFit layout adjuster
+    /\.style\.height\s*=\s*MAX_H/, // slide.style.height = MAX_H
+    /\.style\.setProperty\(['"]height['"]/, // style.setProperty('height', ...)
+    /\.style\.overflow\s*=/,     // style.overflow = 'hidden'
+    /content\.style\.transform\s*=/, // content.style.transform = 'scale(...)'
+    /document\.body\.style\.(height|overflow)/, // body.style.height/overflow
+    /\bslide\.style\.(height|overflow)\b/, // direct slide style manipulation
+  ]
+
+  // Remove <script> blocks that match any of the layout patterns
+  const cleaned = sectionHtml.replace(
+    /<script\b[^>]*>([\s\S]*?)<\/script>/gi,
+    (match, content) => {
+      for (const pattern of layoutScriptPatterns) {
+        if (pattern.test(content)) {
+          return "" // Remove this script block entirely
+        }
+      }
+      return match // Keep harmless scripts
+    },
+  )
+
+  return cleaned
 }
 
 /** Best-effort background colour/image detection for a slide container. */
@@ -446,6 +511,8 @@ export interface ExpandViewerResult {
   viewerFilename: string | null
   /** How the viewer was matched. Useful for debugging / logs. */
   matchMode: "relativePath" | "filename-suffix" | "templated-prefix" | null
+  /** Slide info extracted from the viewer (count, path, etc.) */
+  viewerSlideInfo: ViewerSlideInfo | null
 }
 
 export function expandViewerReferences(
@@ -454,7 +521,7 @@ export function expandViewerReferences(
   viewerRefs: string[],
 ): ExpandViewerResult {
   if (files.length === 0 || viewerRefs.length === 0) {
-    return { slides: files, viewerFilename: null, matchMode: null }
+    return { slides: files, viewerFilename: null, matchMode: null, viewerSlideInfo: null }
   }
 
   // 1. Direct relativePath suffix match
@@ -481,6 +548,7 @@ export function expandViewerReferences(
       slides: otherFiles.filter((f) => refsByFile.has(f.filename)),
       viewerFilename: viewerFile.filename,
       matchMode: "relativePath",
+      viewerSlideInfo: extractViewerSlideInfo(viewerFile.content),
     }
   }
 
@@ -509,6 +577,7 @@ export function expandViewerReferences(
         slides: otherFiles.filter((f) => matched.has(f.filename)),
         viewerFilename: viewerFile.filename,
         matchMode: "templated-prefix",
+        viewerSlideInfo: extractViewerSlideInfo(viewerFile.content),
       }
     }
   }
@@ -529,10 +598,11 @@ export function expandViewerReferences(
       slides: otherFiles.filter((f) => matched.has(f.filename)),
       viewerFilename: viewerFile.filename,
       matchMode: "filename-suffix",
+      viewerSlideInfo: extractViewerSlideInfo(viewerFile.content),
     }
   }
 
-  return { slides: files, viewerFilename: null, matchMode: null }
+  return { slides: files, viewerFilename: null, matchMode: null, viewerSlideInfo: null }
 }
 
 /**
@@ -549,6 +619,83 @@ export function isLikelyViewerFile(parsed: ParsedFile): boolean {
   if (parsed.content.length > 50_000) return false
   const refs = detectViewerSlideReferences(parsed.content)
   return refs.length > 0
+}
+
+/** Information extracted from a viewer/deck-shell HTML. */
+export interface ViewerSlideInfo {
+  /** Total number of slides referenced by the viewer */
+  totalCount: number
+  /** The path prefix pattern (e.g. "processed/slide_" for "processed/slide_00.html") */
+  pathPrefix: string
+  /** Example filename (e.g. "slide_00.html") */
+  exampleFilename: string
+  /** The full subdirectory path (e.g. "processed/") */
+  subdirectory: string
+}
+
+/**
+ * Parse a viewer HTML to extract deck metadata: how many slides,
+ * what path pattern, and what subdirectory the slides live in.
+ *
+ * Detection strategies (ordered by confidence):
+ *   1. Explicit `var total = N` in a script — most reliable
+ *   2. `var heights = { 0:720, 1:720, ... }` — count the keys
+ *   3. Array/object literal with per-slide data
+ *   4. Iframe src pattern with numeric range in JS
+ */
+export function extractViewerSlideInfo(html: string): ViewerSlideInfo | null {
+  let totalCount = 0
+  let pathPrefix = ""
+  let exampleFilename = ""
+
+  // Strategy 1: `var total = <N>;`
+  const totalMatch = html.match(/\bvar\s+total\s*=\s*(\d+)\b/)
+  if (totalMatch) {
+    totalCount = parseInt(totalMatch[1], 10)
+  }
+
+  // Strategy 2: `var heights = { 0:720, 1:720, ..., N:720 }` — count keys
+  if (totalCount === 0) {
+    const heightsMatch = html.match(/\bheights\s*=\s*\{([^}]+)\}/)
+    if (heightsMatch) {
+      const keys = heightsMatch[1].match(/(\d+)\s*:/g)
+      if (keys) totalCount = keys.length
+    }
+  }
+
+  // If we couldn't determine the total, we can't provide useful info.
+  if (totalCount === 0) return null
+
+  // Extract the path pattern from JS string concatenation:
+  //   src = "processed/slide_" + String(c).padStart(2,"0") + ".html"
+  //   or: '"processed/slide_" + i + ".html"'
+  const pathPattern = html.match(/["'`]([^"'`]*(?:slide|page|section|deck|step))[_-]?["'`](?:\s*\+\s*[^+]+\+\s*["'`]\.html["'`])/)
+  if (pathPattern) {
+    pathPrefix = pathPattern[1]
+
+    // Extract the subdirectory (e.g. "processed/" from "processed/slide_")
+    const lastSlash = pathPrefix.lastIndexOf("/")
+    const subdirectory = lastSlash >= 0 ? pathPrefix.substring(0, lastSlash + 1) : ""
+    pathPrefix = pathPrefix + (pathPrefix.endsWith("/") ? "" : pathPrefix.endsWith("_") || pathPrefix.endsWith("-") ? "" : "_")
+
+    // Construct example filename
+    exampleFilename = `${pathPrefix.split("/").pop() || "slide"}00.html`
+  }
+
+  // Try alternative: templated string literal like `processed/slide_${i}.html`
+  if (!pathPrefix) {
+    const tplMatch = html.match(/["'`]([^"'`]*?(?:slide|page|section|deck|step))[_-]?\$\{/)
+    if (tplMatch) {
+      pathPrefix = tplMatch[1] + "_"
+      exampleFilename = `${pathPrefix.split("/").pop()}00.html`
+    }
+  }
+
+  // Extract subdirectory from path prefix
+  const lastSlash = pathPrefix.lastIndexOf("/")
+  const subdirectory = lastSlash >= 0 ? pathPrefix.substring(0, lastSlash + 1) : ""
+
+  return { totalCount, pathPrefix, exampleFilename, subdirectory }
 }
 
 /**

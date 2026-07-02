@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { useEditor, createContainerElement, createTextElement, createShapeElement, createImageElement } from "@/store/editor-store"
-import { parseHtmlToSlides, parseHtmlToRawSlides, parseMultipleHtmlToSlides, loadFontsFromHtml, detectViewerSlideReferences, expandViewerReferences, isLikelyViewerFile, type ParsedFile } from "@/lib/html-io"
+import { parseHtmlToSlides, parseHtmlToRawSlides, parseMultipleHtmlToSlides, loadFontsFromHtml, detectViewerSlideReferences, expandViewerReferences, isLikelyViewerFile, extractViewerSlideInfo, type ParsedFile, type ViewerSlideInfo } from "@/lib/html-io"
 import type { Slide } from "@/types/editor"
 import { toast } from "sonner"
 import {
@@ -50,6 +50,7 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
   const [pendingFiles, setPendingFiles] = useState<ParsedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [isParsing, setIsParsing] = useState(false)
+  const [viewerSlideInfo, setViewerSlideInfo] = useState<ViewerSlideInfo | null>(null)
   const { replaceSlides, addElement } = useEditor()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
@@ -61,6 +62,7 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
     setMode("exact")
     setTab("paste")
     setIsDragging(false)
+    setViewerSlideInfo(null)
   }, [])
 
   function handleClose(open: boolean) {
@@ -152,9 +154,25 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
     const result = expandViewerReferences(files, viewer, refs)
     if (!result.viewerFilename || result.slides.length === 0) {
       // The viewer declared refs but none of the uploaded files matched —
-      // fall back to importing everything we have so the user at least
-      // sees the viewer in the editor.
-      toast.success(
+      // this happens when the user uploaded only the index.html without
+      // the accompanying slide files. Show the detected slide count and
+      // suggest uploading the folder instead.
+      const info = result.viewerSlideInfo || extractViewerSlideInfo(viewer.content)
+      if (info && files.length === 1) {
+        // Single file upload, viewer detected — show suggestion UI instead
+        // of falling back to importing the viewer itself.
+        setViewerSlideInfo(info)
+        setPendingFiles(files)
+        toast.warning(
+          `Detected a ${info.totalCount}-slide deck wrapper (${viewer.filename}). ` +
+          `Please upload the entire folder to import all slides.`,
+          { duration: 6000 },
+        )
+        return files
+      }
+
+      // Multi-file case or no info — fall back to importing everything
+      toast.warning(
         `Loaded ${files.length} HTML file${files.length === 1 ? "" : "s"} ` +
         `(could not resolve ${viewer.filename}'s slide references — ` +
         `folder upload required for multi-file decks)`,
@@ -416,6 +434,19 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
                 totalSize={formatSize(totalSize)}
               />
             )}
+            {/* Viewer suggestion: shown when a single viewer file (index.html)
+                is uploaded without its accompanying slide files. */}
+            {viewerSlideInfo && pendingFiles.length === 1 && (
+              <ViewerSuggestionBanner
+                info={viewerSlideInfo}
+                onSelectFolder={() => {
+                  setViewerSlideInfo(null)
+                  setPendingFiles([])
+                  setTab("folder")
+                  setTimeout(() => folderInputRef.current?.click(), 100)
+                }}
+              />
+            )}
           </TabsContent>
 
           {/* Folder upload tab */}
@@ -592,6 +623,54 @@ function PendingFilesList({
       <div className="px-3 py-1.5 border-t bg-muted/30 flex items-center gap-2 text-[11px] text-muted-foreground">
         <AlertCircle className="w-3 h-3" />
         Files will be imported as slides in alphabetical order. Use smart mode to extract editable elements.
+      </div>
+    </div>
+  )
+}
+
+// ---------- Viewer Suggestion Banner ----------
+
+function ViewerSuggestionBanner({
+  info,
+  onSelectFolder,
+}: {
+  info: { totalCount: number; pathPrefix: string; exampleFilename: string; subdirectory: string }
+  onSelectFolder: () => void
+}) {
+  return (
+    <div className="mt-3 p-4 border rounded-lg bg-blue-50/60 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+      <div className="flex items-start gap-3">
+        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center shrink-0 mt-0.5">
+          <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+            Multi-slide deck detected
+          </p>
+          <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+            This is a <strong>{info.totalCount}-slide</strong> deck wrapper.
+            The slides are in <code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-900 rounded text-[11px] font-mono">{info.subdirectory || "(same folder)"}</code>.
+          </p>
+          <div className="flex gap-2 mt-3">
+            <Button
+              variant="default"
+              size="sm"
+              className="h-7 text-xs gap-1.5 bg-blue-600 hover:bg-blue-700"
+              onClick={onSelectFolder}
+            >
+              <FolderUp className="w-3.5 h-3.5" />
+              Select folder containing all {info.totalCount} slides
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={onSelectFolder}
+            >
+              Switch to Folder mode
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   )
