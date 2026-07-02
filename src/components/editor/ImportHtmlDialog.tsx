@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { useEditor, createContainerElement, createTextElement, createShapeElement, createImageElement } from "@/store/editor-store"
-import { parseHtmlToSlides, parseHtmlToRawSlides, parseMultipleHtmlToSlides, loadFontsFromHtml, detectViewerSlideReferences, expandViewerReferences, isLikelyViewerFile, extractViewerSlideInfo, type ParsedFile, type ViewerSlideInfo } from "@/lib/html-io"
+import { parseHtmlToSlides, parseHtmlToRawSlides, parseMultipleHtmlToSlides, loadFontsFromHtml, detectViewerSlideReferences, expandViewerReferences, isLikelyViewerFile, extractViewerSlideInfo, exportSlidesToHtml, type ParsedFile, type ViewerSlideInfo } from "@/lib/html-io"
 import type { Slide } from "@/types/editor"
 import { toast } from "sonner"
 import {
@@ -720,4 +720,3 @@ export function ExportDialog({ open, onOpenChange }: Props) {
 }
 
 // Import at bottom to avoid circular dependency issues
-import { exportSlidesToHtml } from "@/lib/html-io"
