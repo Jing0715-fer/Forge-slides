@@ -6,13 +6,13 @@ import type { Slide } from "@/types/editor"
  */
 export function exportSlidesToPrintableHtml(slides: Slide[]): string {
   const body = slides
-    .map((slide, idx) => {
-      const elements = slide.elements
+    .map((s, idx) => {
+      const elements = s.elements
         .slice()
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((el) => elementToPrintHtml(el))
         .join("\n      ")
-      return `  <section class="slide" data-slide="${idx + 1}" style="background:${slide.background}">
+      return `  <section class="slide" data-slide="${idx + 1}" style="background:${s.background}">
       ${elements}
     </section>`
     })

@@ -1347,17 +1347,17 @@ function stripConflictingCss(css: string): string {
 
 export function exportSlidesToHtml(slides: Slide[], masterElements: EditorElement[] = []): string {
   const body = slides
-    .map((slide, idx) => {
+    .map((s, idx) => {
       // If the slide has rawHtml, extract body content and embed directly
       // — this preserves 100% of the original styling in the exported file.
-      if (slide.rawHtml) {
+      if (s.rawHtml) {
         try {
-          const rawDoc = new DOMParser().parseFromString(slide.rawHtml, "text/html")
+          const rawDoc = new DOMParser().parseFromString(s.rawHtml, "text/html")
           // Collect raw <style> blocks, then strip conflicting rules
           // (html/body sizing, #scaler framework IDs) that would break the
           // export's own framework layout.
           const rawStylesRaw = Array.from(rawDoc.querySelectorAll("style"))
-            .map((s) => s.textContent || "")
+            .map((st) => st.textContent || "")
             .join("\n")
           const rawStyles = stripConflictingCss(rawStylesRaw)
           const rawBody = rawDoc.body ? rawDoc.body.innerHTML : ""
@@ -1375,12 +1375,12 @@ ${rawStyles}
       const masterHtml = masterElements.length > 0
         ? masterElements.slice().sort((a, b) => a.zIndex - b.zIndex).map((el) => elementToHtml(el)).join("\n      ")
         : ""
-      const elements = slide.elements
+      const elements = s.elements
         .slice()
         .sort((a, b) => a.zIndex - b.zIndex)
         .map((el) => elementToHtml(el))
         .join("\n      ")
-      return `  <section class="export-slide" data-slide="${idx + 1}" style="background:${slide.background}">
+      return `  <section class="export-slide" data-slide="${idx + 1}" style="background:${s.background}">
       ${masterHtml}
       ${elements}
     </section>`
