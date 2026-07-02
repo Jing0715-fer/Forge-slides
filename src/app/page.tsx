@@ -5,7 +5,7 @@ import dynamic from "next/dynamic"
 import { LandingPage } from "@/components/editor/LandingPage"
 import { loadFromLocalStorage, hasSavedSession as checkSavedSession } from "@/lib/persistence"
 import { getRecentProjects, saveRecentProject, generateSlideThumbnail, loadRecentProjectData, type RecentProject } from "@/lib/recent-projects"
-import { parseHtmlToRawSlides, loadFontsFromHtml, detectViewerSlideReferences, expandViewerReferences, isLikelyViewerFile, type ParsedFile } from "@/lib/html-io"
+import { parseHtmlToRawSlides, loadFontsFromHtml, detectViewerSlideReferences, expandViewerReferences, isLikelyViewerFile, extractViewerSlideInfo, type ParsedFile } from "@/lib/html-io"
 import type { Slide } from "@/types/editor"
 import { useEditor } from "@/store/editor-store"
 import { toast } from "sonner"
@@ -110,6 +110,25 @@ export default function Home() {
             `Auto-loaded ${result.slides.length} slide${result.slides.length === 1 ? "" : "s"} ` +
             `referenced by ${result.viewerFilename}`,
           )
+        } else if (parsedFiles.length === 1) {
+          // Single file upload with viewer detected but no matching slides —
+          // the user likely uploaded just the index.html without the folder.
+          // Auto-open the folder picker so they can select the parent folder.
+          const info = result.viewerSlideInfo || extractViewerSlideInfo(viewer.content)
+          if (info) {
+            toast.info(
+              `Detected a ${info.totalCount}-slide deck (${viewer.filename}). ` +
+              `Select the folder containing all slides.`,
+              { duration: 4000 },
+            )
+            setTimeout(() => folderInputRef.current?.click(), 150)
+            return
+          }
+          toast.warning(
+            `"${viewer.filename}" is a deck wrapper. Please upload the entire folder ` +
+            `containing the slide files instead.`,
+          )
+          return
         }
       }
     }
