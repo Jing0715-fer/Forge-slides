@@ -2,14 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  /* config options here */
   typescript: {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  // Turbopack is used by default in Next.js 16. We keep an empty config
-  // to satisfy the explicit bundler preference requirement.
-  turbopack: {},
+  webpack: (config) => config,
   // P2-6: strip Next.js's default `s-maxage=31536000` prerender cache so
   // browsers don't hold onto HTML that references stale chunk hashes from a
   // previous build. Without this, a page can be served with chunk paths
