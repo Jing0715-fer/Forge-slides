@@ -155,21 +155,22 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
     if (!result.viewerFilename || result.slides.length === 0) {
       // The viewer declared refs but none of the uploaded files matched —
       // this happens when the user uploaded only the index.html without
-      // the accompanying slide files. Show the detected slide count and
-      // suggest uploading the folder instead.
+      // the accompanying slide files. Auto-trigger the folder picker so
+      // the user can select the parent folder containing all slides.
       const info = result.viewerSlideInfo || extractViewerSlideInfo(viewer.content)
       if (info && files.length === 1) {
-        // Single file upload, viewer detected — show suggestion UI.
-        // Keep the pending files list EMPTY so the user cannot accidentally
-        // import the viewer wrapper itself as a slide (which would just
-        // show a broken blank slide with 404s for sibling files).
-        setViewerSlideInfo(info)
+        // Single file upload, viewer detected — auto-switch to folder mode
+        // and open the native folder picker immediately.
         setPendingFiles([])
-        toast.warning(
-          `Detected a ${info.totalCount}-slide deck wrapper (${viewer.filename}). ` +
-          `Please upload the entire folder to import all slides.`,
-          { duration: 6000 },
+        setTab("folder")
+        toast.info(
+          `Detected a ${info.totalCount}-slide deck (${viewer.filename}). ` +
+          `Select the folder containing all slides.`,
+          { duration: 4000 },
         )
+        // Open the folder picker after a brief delay (React needs to re-render
+        // the folder tab content with the input element first).
+        setTimeout(() => folderInputRef.current?.click(), 150)
         return []
       }
 
