@@ -76,18 +76,34 @@ export function parseHtmlToRawSlides(html: string): Slide[] {
     .map((s) => s.outerHTML)
     .join("\n")
 
-  // Collect <link> stylesheet tags for fonts
-  const linkTags = Array.from(doc.querySelectorAll('link[rel="stylesheet"]'))
-    .map((l) => l.outerHTML)
-    .join("\n")
-
   // Collect external <script> tags (e.g. Tailwind CDN, GLM artifact proxy).
   // These are critical for decks that rely on utility-class frameworks
-  // (Tailwind, UnoCSS, Windi CSS) or that proxy external scripts through
-  // artifact CDNs. Without these, all utility classes are no-ops and the
-  // slide renders with zero layout/styling.
+  // (Tailwind, UnoCSS, Windi CSS). Many AI-generated decks serve these
+  // scripts through artifact CDN proxies (e.g. artifacts-cdn.chatglm.site)
+  // that wrap/modify the original script. The proxied versions can inject
+  // globals or reference DOM elements that only exist in the original
+  // viewer context, causing runtime errors like "slide is not defined".
+  //
+  // To avoid this, we rewrite artifact CDN URLs to their original source.
+  // Pattern: https://artifacts-cdn.chatglm.site/https://cdn.tailwindcss.com
+  //         → https://cdn.tailwindcss.com
   const scriptTags = Array.from(doc.querySelectorAll("script[src]"))
-    .map((s) => s.outerHTML)
+    .map((s) => {
+      const src = s.getAttribute("src") || ""
+      const unproxied = unwrapArtifactCdnUrl(src)
+      if (unproxied) return `<script src="${escapeHtmlAttr(unproxied)}"></script>`
+      return s.outerHTML
+    })
+    .join("\n")
+
+  // Also rewrite artifact-CDN-proxied <link> hrefs (fonts, stylesheets).
+  const linkTags = Array.from(doc.querySelectorAll('link[rel="stylesheet"]'))
+    .map((l) => {
+      const href = l.getAttribute("href") || ""
+      const unproxied = unwrapArtifactCdnUrl(href)
+      if (unproxied) return `<link rel="stylesheet" href="${escapeHtmlAttr(unproxied)}">`
+      return l.outerHTML
+    })
     .join("\n")
 
   // Find slide sections (reuse the same detection logic).
@@ -316,6 +332,47 @@ function escapeForCssValue(value) {
     if (m === "\\") return "\\\\"
     return m
   })
+}
+
+/**
+ * Unwrap an artifact CDN proxy URL to the original source.
+ *
+ * Many AI-generated slide decks serve external resources (Tailwind CDN,
+ * Google Fonts, Material Icons) through artifact CDN proxies such as
+ * `artifacts-cdn.chatglm.site`. These proxies wrap the original script
+ * and may inject globals (e.g. a `slide` variable) or other modifications
+ * that only work in the original viewer context. Using the proxied
+ * versions in our iframe causes runtime errors ("slide is not defined")
+ * and layout failures.
+ *
+ * This function extracts the original URL from the proxy wrapper.
+ *
+ * Examples:
+ *   artifacts-cdn.chatglm.site/https://cdn.tailwindcss.com
+ *     → https://cdn.tailwindcss.com
+ *   artifacts-cdn.chatglm.site/https://fonts.googleapis.com/css2?family=...
+ *     → https://fonts.googleapis.com/css2?family=...
+ */
+function unwrapArtifactCdnUrl(url: string): string | null {
+  // Match common GLM / ChatGLM artifact CDN patterns
+  const patterns = [
+    /^https?:\/\/artifacts-cdn\.chatglm\.site\/(https?:\/\/.+)$/i,
+    /^https?:\/\/sfile\.chatglm\.cn\/(https?:\/\/.+)$/i,
+  ]
+  for (const pattern of patterns) {
+    const m = url.match(pattern)
+    if (m) return m[1]
+  }
+  return null
+}
+
+/** Escape a value for use inside an HTML attribute double-quoted string. */
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
 }
 
 /** Filter out elements that are descendants of other matched elements */
