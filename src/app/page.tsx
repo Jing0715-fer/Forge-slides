@@ -98,20 +98,30 @@ export default function Home() {
     // If one of the uploaded files is a "viewer" (e.g. an `index.html`
     // that loads sibling slides via JS / iframe), resolve the references
     // and import only the actual slide files.
-    const expanded = await expandForViewerReferences(parsedFiles)
-    if (expanded.length === 0) {
-      toast.error("No slides detected after resolving viewer references")
-      return
+    let filesToImport = parsedFiles
+    const viewer = parsedFiles.find(isLikelyViewerFile)
+    if (viewer) {
+      const refs = detectViewerSlideReferences(viewer.content)
+      if (refs.length > 0) {
+        const result = expandViewerReferences(parsedFiles, viewer, refs)
+        if (result.slides.length > 0) {
+          filesToImport = result.slides
+          toast.success(
+            `Auto-loaded ${result.slides.length} slide${result.slides.length === 1 ? "" : "s"} ` +
+            `referenced by ${result.viewerFilename}`,
+          )
+        }
+      }
     }
 
     // Load custom fonts from the HTML files
-    for (const file of parsedFiles) {
+    for (const file of filesToImport) {
       loadFontsFromHtml(file.content)
     }
 
     // Use Exact mode (iframe rendering) for 100% visual fidelity
     const allSlides: Slide[] = []
-    for (const file of parsedFiles) {
+    for (const file of filesToImport) {
       const parsed = parseHtmlToRawSlides(file.content)
       allSlides.push(...parsed)
     }
