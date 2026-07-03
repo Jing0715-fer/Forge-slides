@@ -1,7 +1,9 @@
 "use client"
 
-import React, { useState, useEffect, type RefObject } from "react"
+import React, { useState, useEffect } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { ThemeToggle } from "./ThemeToggle"
 import { toast } from "sonner"
 import {
@@ -11,25 +13,41 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { RecentProject } from "@/lib/recent-projects"
-import { getAiHistoryIndex, loadAiHistory, type AiHistoryIndexEntry } from "@/lib/ai-history"
+import { ImportLauncher } from "./ImportLauncher"
 import type { Slide } from "@/types/editor"
+import type { ParsedFile } from "@/lib/html-io"
+import { getAiHistoryIndex, loadAiHistory, type AiHistoryIndexEntry } from "@/lib/ai-history"
 import { useEditor } from "@/store/editor-store"
 
 interface Props {
-  onStart: () => void
-  onImport: () => void
+  onStart?: () => void
+  /** Toolbar/AI button triggers: caller decides what to do (typically
+   *  `setView('editor')` + `setPendingAiGenerate(true)`). */
+  onImport?: () => void
   hasSavedSession: boolean
   onRestoreSession: () => void
   recentProjects?: RecentProject[]
   onOpenRecent?: (project: RecentProject) => void
-  onFileImport?: (files: FileList) => void
-  fileInputRef?: RefObject<HTMLInputElement | null>
-  onFolderImport?: (files: FileList) => void
-  folderInputRef?: RefObject<HTMLInputElement | null>
+  /**
+   * Single import handoff — used by the <ImportLauncher/> rendered
+   * below and the drop-anywhere handler on the hero. By design, both
+   * paths converge here so any change to import behavior touches one
+   * callback, not two parallel handlers.
+   */
+  onSlidesLoaded: (slides: Slide[], pendingFiles: ParsedFile[]) => void
   onAiGenerate?: () => void
 }
 
-export function LandingPage({ onStart, onImport, hasSavedSession, onRestoreSession, recentProjects = [], onOpenRecent, onFileImport, fileInputRef, onFolderImport, folderInputRef, onAiGenerate }: Props) {
+export function LandingPage({
+  onStart,
+  onImport,
+  hasSavedSession,
+  onRestoreSession,
+  recentProjects = [],
+  onOpenRecent,
+  onSlidesLoaded,
+  onAiGenerate,
+}: Props) {
   const [aiHistory, setAiHistory] = useState<AiHistoryIndexEntry[]>([])
   const { loadProject } = useEditor()
 
@@ -49,7 +67,7 @@ export function LandingPage({ onStart, onImport, hasSavedSession, onRestoreSessi
       currentSlideId: (data.slides[0] as Slide)?.id || "",
     })
     toast.success(`Loaded ${entry.slideCount} slide(s) from AI history`)
-    onStart()
+    onStart?.()
   }
   const features = [
     {
@@ -145,7 +163,7 @@ export function LandingPage({ onStart, onImport, hasSavedSession, onRestoreSessi
       </header>
 
       {/* Hero section */}
-      <section className="relative z-10 flex-1 flex items-center justify-center px-6 pt-16 pb-12">
+      <section className="relative z-10 flex-1 flex items-center justify-center px-6 pt-16 pb-12 transition-colors">
         <div className="max-w-4xl mx-auto text-center">
           {/* Badge */}
           <div className="hero-badge inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-rose-500/10 via-pink-500/10 to-purple-500/10 border border-pink-500/30 text-xs font-semibold text-pink-600 dark:text-pink-400 mb-7 landing-animate-in shadow-md shadow-pink-500/10 backdrop-blur-sm">
@@ -172,70 +190,53 @@ export function LandingPage({ onStart, onImport, hasSavedSession, onRestoreSessi
             Drag, snap, resize, and export clean production-ready markup. No code required.
           </p>
 
-          {/* CTA buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-10 landing-animate-in" style={{ animationDelay: "450ms" }}>
+          {/* CTA buttons — 3-column equal-width row on ≥ sm. All three are
+              flex-1 + sm:max-w-[220px] so they stay perfectly aligned even
+              when AI Generate is hidden. The hero's accent palette is
+              rose → pink → purple, so all three buttons share the same
+              gradient family:
+                • Start Editing — rose-500 → purple-600 (the primary CTA)
+                • Import HTML   — rose-500 → pink-500     (mid-fill, warm)
+                • AI Generate   — violet-500 → fuchsia-600  (cool, alt)
+              The mid-fill sits between the two extremes in the gradient
+              ring, so the row reads as one continuous wave rather than
+              three unrelated buttons. */}
+          <div
+            className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 mb-10 landing-animate-in"
+            style={{ animationDelay: "450ms" }}
+          >
             <Button
               size="lg"
               onClick={onStart}
-              className="group gap-2 h-12 px-8 text-base bg-gradient-to-r from-rose-500 to-purple-600 hover:from-rose-600 hover:to-purple-700 text-white shadow-xl shadow-purple-500/30 hover:shadow-2xl hover:shadow-purple-500/40 transition-all border-0 hover:scale-[1.02] active:scale-[0.98] rounded-xl"
+              className="group gap-2 h-12 px-6 text-base bg-gradient-to-r from-rose-500 to-purple-600 hover:from-rose-600 hover:to-purple-700 text-white shadow-xl shadow-purple-500/30 hover:shadow-2xl hover:shadow-purple-500/40 transition-all border-0 hover:scale-[1.02] active:scale-[0.98] rounded-xl w-full sm:flex-1 sm:max-w-[220px] justify-center"
             >
               <Play className="w-4 h-4 fill-white transition-transform group-hover:scale-110" />
               Start Editing
               <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
             </Button>
+
+            {/* Import HTML — single entry into the unified <ImportHtmlDialog/>
+                shared with the editor toolbar. Stays the only import path;
+                file / folder / paste choice lives inside the dialog. */}
+            <ImportLauncher
+              onSlidesLoaded={onSlidesLoaded}
+              variant="landing"
+              label="Import HTML"
+              icon="file"
+              className="w-full sm:flex-1 sm:max-w-[220px] [&_button]:h-12 [&_button]:px-6 [&_button]:text-base [&_button]:rounded-xl [&_button]:gap-2"
+            />
+
             {onAiGenerate && (
               <Button
                 size="lg"
                 onClick={onAiGenerate}
-                className="group gap-2 h-12 px-8 text-base bg-gradient-to-r from-violet-500 to-fuchsia-600 hover:from-violet-600 hover:to-fuchsia-700 text-white shadow-xl shadow-violet-500/30 hover:shadow-2xl hover:shadow-violet-500/40 transition-all border-0 hover:scale-[1.02] active:scale-[0.98] rounded-xl"
+                className="group gap-2 h-12 px-6 text-base bg-gradient-to-r from-violet-500 to-fuchsia-600 hover:from-violet-600 hover:to-fuchsia-700 text-white shadow-xl shadow-violet-500/30 hover:shadow-2xl hover:shadow-violet-500/40 transition-all border-0 hover:scale-[1.02] active:scale-[0.98] rounded-xl w-full sm:flex-1 sm:max-w-[220px] justify-center"
               >
                 <Wand2 className="w-4 h-4 transition-transform group-hover:rotate-12" />
                 AI Generate
               </Button>
             )}
-            <Button
-              size="lg"
-              variant="outline"
-              onClick={() => { if (onFileImport && fileInputRef) { fileInputRef.current?.click() } else { onImport() } }}
-              className="group gap-2 h-12 px-8 text-base border-2 hover:bg-muted/40 hover:border-primary/40 transition-all hover:scale-[1.02] active:scale-[0.98] rounded-xl"
-            >
-              <Upload className="w-4 h-4 transition-transform group-hover:-translate-y-0.5" />
-              Import HTML
-            </Button>
-            {onFolderImport && folderInputRef && (
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => folderInputRef.current?.click()}
-                className="group gap-2 h-12 px-8 text-base border-2 hover:bg-muted/40 hover:border-primary/40 transition-all hover:scale-[1.02] active:scale-[0.98] rounded-xl"
-                title="Import a folder of HTML files (one slide per file)"
-              >
-                <FolderUp className="w-4 h-4 transition-transform group-hover:scale-110" />
-                Import Folder
-              </Button>
-            )}
           </div>
-
-          {/* Folder drag-and-drop — visible on the entire landing hero */}
-          {onFolderImport && folderInputRef && (
-            <input
-              ref={folderInputRef}
-              type="file"
-              multiple
-              // @ts-expect-error — webkitdirectory is a non-standard but widely supported attribute
-              webkitdirectory=""
-              directory=""
-              onChange={(e) => {
-                if (e.target.files && e.target.files.length > 0) {
-                  onFolderImport(e.target.files)
-                }
-                e.target.value = ""
-              }}
-              className="hidden"
-              tabIndex={-1}
-              aria-hidden="true"
-            />
-          )}
 
           {/* Restore session */}
           {hasSavedSession && (

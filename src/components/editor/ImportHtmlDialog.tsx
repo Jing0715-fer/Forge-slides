@@ -38,12 +38,26 @@ const SAMPLE_HTML = `<section class="slide" style="background: linear-gradient(1
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /**
+   * Optional callback that receives the parsed slides once the user clicks
+   * the "Import" button. If omitted, the dialog calls `replaceSlides`
+   * directly via the editor store (legacy behavior — used by the editor
+   * page's toolbar).
+   *
+   * Set this to `true` to use it as a **plug-in** mode: the dialog returns
+   * the parsed slides and lets the caller decide what to do — typically
+   * `loadProject({ slides, currentSlideId })` + switch the app view, as
+   * the landing page does. Keep this callback a single source of truth so
+   * the landing page and editor page stay in lockstep when the dialog
+   * logic changes.
+   */
+  onSlidesLoaded?: (slides: Slide[], pendingFiles: ParsedFile[]) => void
 }
 
 type ImportTab = "paste" | "file" | "folder"
 type ParseMode = "exact" | "smart" | "raw"
 
-export function ImportHtmlDialog({ open, onOpenChange }: Props) {
+export function ImportHtmlDialog({ open, onOpenChange, onSlidesLoaded }: Props) {
   const [tab, setTab] = useState<ImportTab>("paste")
   const [html, setHtml] = useState(SAMPLE_HTML)
   const [mode, setMode] = useState<ParseMode>("exact")
@@ -94,6 +108,24 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
   // Filter to only .html/.htm files
   function isHtmlFile(file: File): boolean {
     return /\.(html?|xhtml)$/i.test(file.name) || file.type === "text/html"
+  }
+
+  /**
+   * Apply the parsed slides — route to the caller-provided callback if
+   * one was passed (so the parent page can keep its own loading/redirect
+   * logic, e.g. landing page → switch view to "editor" + persist), or
+   * fall back to `replaceSlides` (editor toolbar default). This is the
+   * single handoff point so that adding a new import path touches one
+   * place, not four.
+   */
+  function commitSlides(slides: Slide[]) {
+    if (onSlidesLoaded) {
+      onSlidesLoaded(slides, pendingFiles)
+      onOpenChange(false)
+      return
+    }
+    replaceSlides(slides)
+    onOpenChange(false)
   }
 
   async function handleFilesSelected(files: FileList | File[]) {
@@ -235,7 +267,7 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
             setIsParsing(false)
             return
           }
-          replaceSlides(parsed)
+          commitSlides(parsed)
           toast.success(`Imported ${parsed.length} slide(s) with 100% visual fidelity.`)
         } else if (mode === "smart") {
           const parsed = parseHtmlToSlides(htmlContent)
@@ -244,7 +276,7 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
             setIsParsing(false)
             return
           }
-          replaceSlides(parsed)
+          commitSlides(parsed)
           toast.success(`Imported ${parsed.length} slide(s).`)
         } else {
           addElement(
@@ -280,7 +312,7 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
             setIsParsing(false)
             return
           }
-          replaceSlides(allSlides)
+          commitSlides(allSlides)
           toast.success(`Imported ${allSlides.length} slide(s) with 100% visual fidelity.`)
         } else if (mode === "smart") {
           // Load custom fonts from the HTML files
@@ -293,7 +325,7 @@ export function ImportHtmlDialog({ open, onOpenChange }: Props) {
             setIsParsing(false)
             return
           }
-          replaceSlides(parsed)
+          commitSlides(parsed)
           toast.success(`Imported ${parsed.length} slide(s) from ${pendingFiles.length} file(s).`)
         } else {
           // Raw mode: each file becomes a container element on a new slide

@@ -1,11 +1,10 @@
 "use client"
 
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { LandingPage } from "@/components/editor/LandingPage"
 import { loadFromLocalStorage, hasSavedSession as checkSavedSession } from "@/lib/persistence"
 import { getRecentProjects, saveRecentProject, generateSlideThumbnail, loadRecentProjectData, type RecentProject } from "@/lib/recent-projects"
-import { parseHtmlToRawSlides, loadFontsFromHtml, detectViewerSlideReferences, expandViewerReferences, isLikelyViewerFile, extractViewerSlideInfo, type ParsedFile } from "@/lib/html-io"
 import type { Slide } from "@/types/editor"
 import { useEditor } from "@/store/editor-store"
 import { toast } from "sonner"
@@ -32,8 +31,6 @@ export default function Home() {
   const [pendingAiGenerate, setPendingAiGenerate] = useState(false)
   const [skipBanner, setSkipBanner] = useState(false)
   const { loadProject } = useEditor()
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const folderInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     try {
@@ -61,134 +58,46 @@ export default function Home() {
     setView("editor")
   }, [])
 
-  // Direct file import from landing page. The "viewer detection" logic
-  // lives in expandForViewerReferences below — when the user uploads a
-  // folder containing both an `index.html` viewer and the sibling slide
-  // files it references (e.g. `processed/slide_NN.html`), we drop the
-  // viewer from the import list and load the slides it points at.
-  const handleFileImport = useCallback(async (files: FileList) => {
-    const htmlFiles = Array.from(files).filter(f => /\.(html?|xhtml)$/i.test(f.name) || f.type === "text/html")
-    if (htmlFiles.length === 0) {
-      toast.error("No HTML files found")
-      return
-    }
-
-    const parsedFiles: ParsedFile[] = []
-    for (const file of htmlFiles) {
-      const text = await file.text()
-      // webkitRelativePath is populated by Chromium when the user selects
-      // files via a folder input. For single-file picks it stays empty.
-      const relativePath = (file as any).webkitRelativePath || ""
-      parsedFiles.push({
-        name: file.name.replace(/\.[^.]+$/, ""),
-        filename: file.name,
-        relativePath: typeof relativePath === "string" ? relativePath : "",
-        content: text,
-        size: file.size,
-      })
-    }
-    // Sort by relativePath so a viewer and its sibling slides stay
-    // grouped; then by filename for a stable order.
-    parsedFiles.sort((a, b) => {
-      const ap = a.relativePath || a.filename
-      const bp = b.relativePath || b.filename
-      return ap.localeCompare(bp, undefined, { numeric: true, sensitivity: "base" })
-    })
-
-    // If one of the uploaded files is a "viewer" (e.g. an `index.html`
-    // that loads sibling slides via JS / iframe), resolve the references
-    // and import only the actual slide files.
-    let filesToImport = parsedFiles
-    const viewer = parsedFiles.find(isLikelyViewerFile)
-    if (viewer) {
-      const refs = detectViewerSlideReferences(viewer.content)
-      if (refs.length > 0) {
-        const result = expandViewerReferences(parsedFiles, viewer, refs)
-        if (result.slides.length > 0) {
-          filesToImport = result.slides
-          toast.success(
-            `Auto-loaded ${result.slides.length} slide${result.slides.length === 1 ? "" : "s"} ` +
-            `referenced by ${result.viewerFilename}`,
-          )
-        } else if (parsedFiles.length === 1) {
-          // Single file upload with viewer detected but no matching slides —
-          // the user likely uploaded just the index.html without the folder.
-          // Auto-open the folder picker so they can select the parent folder.
-          const info = result.viewerSlideInfo || extractViewerSlideInfo(viewer.content)
-          if (info) {
-            toast.info(
-              `Detected a ${info.totalCount}-slide deck (${viewer.filename}). ` +
-              `Select the folder containing all slides.`,
-              { duration: 4000 },
-            )
-            setTimeout(() => folderInputRef.current?.click(), 150)
-            return
-          }
-          toast.warning(
-            `"${viewer.filename}" is a deck wrapper. Please upload the entire folder ` +
-            `containing the slide files instead.`,
-          )
-          return
-        }
-      }
-    }
-
-    // Load custom fonts from the HTML files
-    for (const file of filesToImport) {
-      loadFontsFromHtml(file.content)
-    }
-
-    // Use Exact mode (iframe rendering) for 100% visual fidelity
-    const allSlides: Slide[] = []
-    for (const file of filesToImport) {
-      const parsed = parseHtmlToRawSlides(file.content)
-      allSlides.push(...parsed)
-    }
-    const slides = allSlides
+  // Single import handoff for the landing page. The dialog (shared
+  // with the editor toolbar via <ImportLauncher/>) parses the files
+  // itself; here we just receive the parsed `Slide[]` and finalize:
+  // load into the editor store, persist locally, save recent-project,
+  // and switch to the editor view.
+  //
+  // All viewer / drag-drop / webkitdirectory logic lives in
+  // ImportHtmlDialog now — keep this function as the *only* landing-
+  // page-side completion step.
+  const handleSlidesLoaded = useCallback(async (slides: Slide[]) => {
     if (slides.length === 0) {
-      toast.error("No slides detected in the HTML files")
+      toast.error("No slides detected in the selected files")
       return
     }
-
     loadProject({
       slides,
       currentSlideId: slides[0]?.id || "",
     })
-
-    const { saveToLocalStorage } = await import("@/lib/persistence")
-    saveToLocalStorage(slides, slides[0]?.id || "", [])
-
+    try {
+      const { saveToLocalStorage } = await import("@/lib/persistence")
+      saveToLocalStorage(slides, slides[0]?.id || "", [])
+    } catch {
+      /* persistence is best-effort — toolbar restore still works */
+    }
     try {
       const thumbnail = generateSlideThumbnail(slides)
       await saveRecentProject({
-        name: parsedFiles[0]?.name || "Imported HTML",
+        name: "Imported HTML",
         slideCount: slides.length,
         thumbnail,
         slides,
         masterElements: [],
       })
-    } catch { /* ignore */ }
-
+    } catch {
+      /* ignore — recent-projects is a nice-to-have */
+    }
     setRecentProjects(getRecentProjects())
     setSkipBanner(true)
-    toast.success(`Imported ${slides.length} slide(s) from ${parsedFiles.length} file(s)`)
     setView("editor")
   }, [loadProject])
-
-  // Folder import from the landing page — Chromium's webkitdirectory attribute
-  // exposes the chosen folder's files via FileList with non-standard
-  // `webkitRelativePath` properties. The downstream handler (handleFileImport)
-  // already filters by extension and content-type, so we just hand the
-  // FileList over verbatim.
-  //
-  // IMPORTANT: declared AFTER handleFileImport so the closure dependency is
-  // forward-resolved; otherwise Turbopack's hoister can mangle the two
-  // useCallback hooks into a temporal-dead-zone order during SSR pre-render.
-  const handleFolderImport = useCallback((files: FileList | null) => {
-    if (files && files.length > 0) {
-      handleFileImport(files)
-    }
-  }, [handleFileImport])
 
   const handleRestoreSession = useCallback(async () => {
     const saved = await loadFromLocalStorage()
@@ -274,38 +183,7 @@ export default function Home() {
           onRestoreSession={handleRestoreSession}
           recentProjects={recentProjects}
           onOpenRecent={handleOpenRecent}
-          onFileImport={handleFileImport}
-          fileInputRef={fileInputRef}
-          onFolderImport={handleFolderImport}
-          folderInputRef={folderInputRef}
-        />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".html,.htm,.xhtml,text/html"
-          multiple
-          onChange={(e) => {
-            if (e.target.files && e.target.files.length > 0) {
-              handleFileImport(e.target.files)
-            }
-            e.target.value = ""
-          }}
-          className="hidden"
-        />
-        <input
-          ref={folderInputRef}
-          type="file"
-          multiple
-          onChange={(e) => {
-            if (e.target.files && e.target.files.length > 0) {
-              handleFolderImport(e.target.files)
-            }
-            e.target.value = ""
-          }}
-          // @ts-expect-error — webkitdirectory is a non-standard but widely supported attribute
-          webkitdirectory=""
-          directory=""
-          className="hidden"
+          onSlidesLoaded={handleSlidesLoaded}
         />
       </>
     )
