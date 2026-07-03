@@ -137,7 +137,7 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
   return (
     <div className="border-b border-border/40 backdrop-blur-xl flex flex-col shrink-0" style={{ background: "linear-gradient(to right, rgba(253,242,248,0.75), rgba(255,255,255,0.55), rgba(245,243,255,0.75))" }}>
       {/* Row 1: main toolbar */}
-      <div className="h-13 flex items-center gap-2 px-3 py-2">
+      <div className="h-13 flex items-center gap-1.5 lg:gap-2 px-2 lg:px-3 py-2 overflow-x-auto toolbar-row-scroll">
         <TooltipProvider delayDuration={300}>
           {/* Insert group */}
           <ToolbarGroup label="Insert">
@@ -159,9 +159,11 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
             <TooltipBtn label="Upload Image File" onClick={handleAddImage}>
               <ImageIcon className="w-4 h-4" />
             </TooltipBtn>
-            <TooltipBtn label="Image from URL" onClick={handleUrlImage}>
-              <Upload className="w-4 h-4" />
-            </TooltipBtn>
+            <div className="hidden lg:contents">
+              <TooltipBtn label="Image from URL" onClick={handleUrlImage}>
+                <Upload className="w-4 h-4" />
+              </TooltipBtn>
+            </div>
           </ToolbarGroup>
 
           {/* History group */}
@@ -179,29 +181,31 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
             <TooltipBtn label="Duplicate (Ctrl+D)" onClick={() => duplicateElements(selectedIds)} disabled={!hasSelection}>
               <Copy className="w-4 h-4" />
             </TooltipBtn>
-            <TooltipBtn
-              label={formatClipboard ? "Paste Format (click to apply)" : "Copy Format (select an element first)"}
-              onClick={() => {
-                if (formatClipboard && selectedIds.length > 0) {
-                  pasteFormat(selectedIds)
-                  toast.success(`Format applied to ${selectedIds.length} element${selectedIds.length === 1 ? "" : "s"}`)
-                } else if (selectedIds.length === 1) {
-                  copyFormat(selectedIds[0])
-                  toast.success("Format copied — select another element and click again to apply")
-                } else {
-                  toast.error("Select a single element to copy format from")
-                }
-              }}
-              active={!!formatClipboard}
-            >
-              <Paintbrush className="w-4 h-4" />
-            </TooltipBtn>
-            <TooltipBtn label="Bring to Front" onClick={() => selectedIds.forEach(bringToFront)} disabled={!hasSelection}>
-              <BringToFront className="w-4 h-4" />
-            </TooltipBtn>
-            <TooltipBtn label="Send to Back" onClick={() => selectedIds.forEach(sendToBack)} disabled={!hasSelection}>
-              <SendToBack className="w-4 h-4" />
-            </TooltipBtn>
+            <div className="hidden lg:contents">
+              <TooltipBtn
+                label={formatClipboard ? "Paste Format (click to apply)" : "Copy Format (select an element first)"}
+                onClick={() => {
+                  if (formatClipboard && selectedIds.length > 0) {
+                    pasteFormat(selectedIds)
+                    toast.success(`Format applied to ${selectedIds.length} element${selectedIds.length === 1 ? "" : "s"}`)
+                  } else if (selectedIds.length === 1) {
+                    copyFormat(selectedIds[0])
+                    toast.success("Format copied — select another element and click again to apply")
+                  } else {
+                    toast.error("Select a single element to copy format from")
+                  }
+                }}
+                active={!!formatClipboard}
+              >
+                <Paintbrush className="w-4 h-4" />
+              </TooltipBtn>
+              <TooltipBtn label="Bring to Front" onClick={() => selectedIds.forEach(bringToFront)} disabled={!hasSelection}>
+                <BringToFront className="w-4 h-4" />
+              </TooltipBtn>
+              <TooltipBtn label="Send to Back" onClick={() => selectedIds.forEach(sendToBack)} disabled={!hasSelection}>
+                <SendToBack className="w-4 h-4" />
+              </TooltipBtn>
+            </div>
             <TooltipBtn label="Delete (Del)" onClick={() => removeElements(selectedIds)} disabled={!hasSelection}>
               <Trash2 className="w-4 h-4" />
             </TooltipBtn>
@@ -222,33 +226,35 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
             <TooltipBtn label="Zoom In" onClick={() => setZoom(zoom + 0.1)}>
               <ZoomIn className="w-4 h-4" />
             </TooltipBtn>
-            <TooltipBtn
-              label="Fit to Screen"
-              onClick={() => {
-                const canvasEl = document.getElementById("editor-canvas")
-                if (canvasEl) {
-                  const container = canvasEl.parentElement?.parentElement
-                  if (container) {
-                    const containerW = container.clientWidth - 96
-                    const containerH = container.clientHeight - 96
-                    const fitZoom = Math.min(containerW / 1280, containerH / 720, 1)
-                    setZoom(Math.max(0.1, Math.min(fitZoom, 2)))
+            <div className="hidden lg:contents">
+              <TooltipBtn
+                label="Fit to Screen"
+                onClick={() => {
+                  const canvasEl = document.getElementById("editor-canvas")
+                  if (canvasEl) {
+                    const container = canvasEl.parentElement?.parentElement
+                    if (container) {
+                      const containerW = container.clientWidth - 96
+                      const containerH = container.clientHeight - 96
+                      const fitZoom = Math.min(containerW / 1280, containerH / 720, 1)
+                      setZoom(Math.max(0.1, Math.min(fitZoom, 2)))
+                    }
                   }
-                }
-              }}
-            >
-              <Maximize className="w-4 h-4" />
-            </TooltipBtn>
-            <TooltipBtn label="Toggle Grid" onClick={toggleGrid} active={showGrid}>
-              <Grid3x3 className="w-4 h-4" />
-            </TooltipBtn>
-            <TooltipBtn label="Toggle Smart Guides" onClick={toggleGuides} active={showGuides}>
-              <Magnet className="w-4 h-4" />
-            </TooltipBtn>
+                }}
+              >
+                <Maximize className="w-4 h-4" />
+              </TooltipBtn>
+              <TooltipBtn label="Toggle Grid" onClick={toggleGrid} active={showGrid}>
+                <Grid3x3 className="w-4 h-4" />
+              </TooltipBtn>
+              <TooltipBtn label="Toggle Smart Guides" onClick={toggleGuides} active={showGuides}>
+                <Magnet className="w-4 h-4" />
+              </TooltipBtn>
+            </div>
           </ToolbarGroup>
 
           {/* Right side: tools + export */}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-1.5 lg:gap-2 shrink-0">
             <ToolbarGroup label="">
               <TooltipBtn label="Find & Replace (Ctrl+H)" onClick={onFindReplace}>
                 <Search className="w-4 h-4" />
@@ -261,15 +267,17 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
 
             <div className="flex items-center gap-1.5 pl-2 border-l border-border/40">
               <ProjectMenu onSaveTemplate={onSaveTemplate} onOpenTemplates={onOpenTemplates} onAiGenerate={onAiGenerate} onAiHistory={onAiHistory} />
-              <Button variant="outline" size="sm" onClick={onImportClick} className="gap-1.5 h-8 hover:bg-muted/60 transition-colors text-xs">
-                <Upload className="w-3.5 h-3.5" /> Import
+              <Button variant="outline" size="sm" onClick={onImportClick} className="gap-1.5 h-8 hover:bg-muted/60 transition-colors text-xs px-2 2xl:px-3">
+                <Upload className="w-3.5 h-3.5" />
+                <span className="hidden 2xl:inline">Import</span>
               </Button>
-              <Button variant="outline" size="sm" onClick={handleExport} className="gap-1.5 h-8 hover:bg-muted/60 transition-colors text-xs">
-                <Download className="w-3.5 h-3.5" /> Export
+              <Button variant="outline" size="sm" onClick={handleExport} className="gap-1.5 h-8 hover:bg-muted/60 transition-colors text-xs px-2 2xl:px-3">
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden 2xl:inline">Export</span>
               </Button>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" onClick={onPdfExport} className="h-8 w-8 hover:bg-muted/60 transition-colors" title="Export as PDF">
+                  <Button variant="outline" size="icon" onClick={onPdfExport} className="h-8 w-8 hover:bg-muted/60 transition-colors hidden xl:inline-flex" title="Export as PDF">
                     <FileText className="w-3.5 h-3.5" />
                   </Button>
                 </TooltipTrigger>
@@ -277,7 +285,7 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" onClick={onPngExport} className="h-8 w-8 hover:bg-muted/60 transition-colors" title="Export current slide as PNG">
+                  <Button variant="outline" size="icon" onClick={onPngExport} className="h-8 w-8 hover:bg-muted/60 transition-colors hidden xl:inline-flex" title="Export current slide as PNG">
                     <ImageDown className="w-3.5 h-3.5" />
                   </Button>
                 </TooltipTrigger>
@@ -285,7 +293,7 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" onClick={handleCopyHtml} className="h-8 w-8 hover:bg-muted/60 transition-colors" title="Copy HTML to clipboard">
+                  <Button variant="outline" size="icon" onClick={handleCopyHtml} className="h-8 w-8 hover:bg-muted/60 transition-colors hidden xl:inline-flex" title="Copy HTML to clipboard">
                     <Clipboard className="w-3.5 h-3.5" />
                   </Button>
                 </TooltipTrigger>
@@ -302,10 +310,10 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
                     size="sm"
                     onClick={onSaveTemplate}
                     disabled={slides.length === 0}
-                    className="gap-1.5 h-8 hover:bg-muted/60 transition-colors text-xs"
+                    className="gap-1.5 h-8 hover:bg-muted/60 transition-colors text-xs px-2 2xl:px-3"
                   >
                     <Bookmark className="w-3.5 h-3.5" />
-                    <span className="hidden lg:inline">Save Template</span>
+                    <span className="hidden 2xl:inline">Save Template</span>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="text-xs">Save current slides as a reusable template</TooltipContent>
@@ -313,10 +321,10 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
               <Button
                 size="sm"
                 onClick={onAiGenerate}
-                className="gap-1.5 h-8 bg-gradient-to-r from-violet-500 to-fuchsia-600 hover:from-violet-600 hover:to-fuchsia-700 text-white border-0 shadow-sm hover:shadow-md transition-all text-xs"
+                className="gap-1.5 h-8 bg-gradient-to-r from-violet-500 to-fuchsia-600 hover:from-violet-600 hover:to-fuchsia-700 text-white border-0 shadow-sm hover:shadow-md transition-all text-xs px-2 2xl:px-3"
               >
                 <Wand2 className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">AI Generate</span>
+                <span className="hidden 2xl:inline">AI Generate</span>
               </Button>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -324,18 +332,19 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
                     variant="outline"
                     size="sm"
                     onClick={onAiHistory}
-                    className="gap-1.5 h-8 hover:bg-muted/60 transition-colors text-xs"
+                    className="gap-1.5 h-8 hover:bg-muted/60 transition-colors text-xs px-2 2xl:px-3"
                   >
                     <History className="w-3.5 h-3.5" />
-                    <span className="hidden xl:inline">AI History</span>
+                    <span className="hidden 2xl:inline">AI History</span>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="text-xs">View AI generation history</TooltipContent>
               </Tooltip>
             </div>
 
-            <Button size="sm" onClick={onPresent} className="gap-1.5 h-8 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white border-0 shadow-md shadow-purple-500/30 hover:shadow-lg hover:shadow-purple-500/40 transition-all text-xs">
-              <Play className="w-3.5 h-3.5 fill-white" /> Present
+            <Button size="sm" onClick={onPresent} className="shrink-0 gap-1.5 h-8 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white border-0 shadow-md shadow-purple-500/30 hover:shadow-lg hover:shadow-purple-500/40 transition-all text-xs px-2 2xl:px-3 whitespace-nowrap">
+              <Play className="w-3.5 h-3.5 fill-white" />
+              <span className="hidden 2xl:inline">Present</span>
             </Button>
           </div>
         </TooltipProvider>

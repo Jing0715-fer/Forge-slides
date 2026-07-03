@@ -18,20 +18,21 @@ export function LayersPanel() {
   const [query, setQuery] = useState("")
   if (!slide) {
     return (
-      <div className="w-60 border-r border-border/40 flex flex-col h-full shrink-0 overflow-hidden" style={{ background: "linear-gradient(to bottom, rgba(253,242,248,0.9), rgba(255,255,255,0.7), rgba(245,243,255,0.85))" }}>
+      <div className="w-48 xl:w-60 border-r border-border/40 flex flex-col h-full shrink-0 overflow-hidden" style={{ background: "linear-gradient(to bottom, rgba(253,242,248,0.9), rgba(255,255,255,0.7), rgba(245,243,255,0.85))" }}>
         <div className="flex-1 flex items-center justify-center text-muted-foreground text-xs p-4 text-center">
           No slide loaded
         </div>
       </div>
     )
   }
+
   const elements = slide.elements
     .slice()
     .sort((a, b) => b.zIndex - a.zIndex)
     .filter((e) => e.name.toLowerCase().includes(query.toLowerCase()))
 
   return (
-    <div className="w-60 border-r border-border/40 flex flex-col h-full shrink-0 overflow-hidden" style={{ background: "linear-gradient(to bottom, rgba(253,242,248,0.9), rgba(255,255,255,0.7), rgba(245,243,255,0.85))" }}>
+    <div className="w-48 xl:w-60 border-r border-border/40 flex flex-col h-full shrink-0 overflow-hidden" style={{ background: "linear-gradient(to bottom, rgba(253,242,248,0.9), rgba(255,255,255,0.7), rgba(245,243,255,0.85))" }}>
       <div className="p-3 border-b border-border/40 shrink-0" style={{ background: "linear-gradient(to right, rgba(253,242,248,0.95), rgba(245,243,255,0.7))" }}>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Layers</h3>

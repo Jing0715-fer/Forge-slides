@@ -70,8 +70,9 @@ export function ProjectMenu({ onSaveTemplate, onOpenTemplates, onAiGenerate, onA
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-1.5 h-8">
-            <FileJson className="w-3.5 h-3.5" /> Project
+          <Button variant="outline" size="sm" className="gap-1.5 h-8 px-2 2xl:px-3">
+            <FileJson className="w-3.5 h-3.5" />
+            <span className="hidden 2xl:inline">Project</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">

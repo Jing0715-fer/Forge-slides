@@ -28,7 +28,7 @@ export function PropertyPanel() {
   // instead of crashing on `slide.elements.filter(...)` below.
   if (!slide) {
     return (
-      <div className="w-72 border-l border-border/40 flex flex-col h-full" style={{ background: "linear-gradient(to bottom, rgba(245,243,255,0.85), rgba(255,255,255,0.7), rgba(253,242,248,0.75))" }}>
+      <div className="w-56 xl:w-72 border-l border-border/40 flex flex-col h-full" style={{ background: "linear-gradient(to bottom, rgba(245,243,255,0.85), rgba(255,255,255,0.7), rgba(253,242,248,0.75))" }}>
         <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4 text-center">
           No slide loaded
         </div>
@@ -55,7 +55,7 @@ export function PropertyPanel() {
     content = <SingleElementPanel key={el.id} element={el} updateElement={updateElement} bringToFront={bringToFront} sendToBack={sendToBack} />
   }
   return (
-    <div className="w-72 border-l border-border/40 flex flex-col h-full" style={{ background: "linear-gradient(to bottom, rgba(245,243,255,0.85), rgba(255,255,255,0.7), rgba(253,242,248,0.75))" }}>
+    <div className="w-56 xl:w-72 border-l border-border/40 flex flex-col h-full" style={{ background: "linear-gradient(to bottom, rgba(245,243,255,0.85), rgba(255,255,255,0.7), rgba(253,242,248,0.75))" }}>
       <div className="flex-1 overflow-y-auto sf-layers-scroll">{content}</div>
       <SpeakerNotesPanel compact />
     </div>

@@ -78,11 +78,11 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
   }
 
   return (
-    <div className="h-28 border-t border-border/40 flex flex-col shrink-0" style={{ background: "linear-gradient(to bottom, rgba(245,243,255,0.8), rgba(255,255,255,0.6), rgba(253,242,248,0.7))" }}>
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/40" style={{ background: "linear-gradient(to right, rgba(245,243,255,0.9), rgba(253,242,248,0.7))" }}>
+    <div className="h-24 xl:h-28 border-t border-border/40 flex flex-col shrink-0" style={{ background: "linear-gradient(to bottom, rgba(245,243,255,0.8), rgba(255,255,255,0.6), rgba(253,242,248,0.7))" }}>
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/40 shrink-0" style={{ background: "linear-gradient(to right, rgba(245,243,255,0.9), rgba(253,242,248,0.7))" }}>
         <h3 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-1.5">
           Slides
-          <span className="text-[10px] font-normal text-muted-foreground/70 normal-case tracking-normal">
+          <span className="hidden lg:inline text-[10px] font-normal text-muted-foreground/70 normal-case tracking-normal">
             · drag to reorder
           </span>
         </h3>
@@ -96,7 +96,8 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                   className="h-7 gap-1 text-xs hover:bg-background"
                   onClick={() => onNewFromTemplate ? onNewFromTemplate() : addSlide()}
                 >
-                  <LayoutTemplate className="w-3 h-3" /> Template
+                  <LayoutTemplate className="w-3 h-3" />
+                  <span className="hidden md:inline">Template</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">New from template</TooltipContent>
@@ -104,7 +105,8 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-background" onClick={addSlide}>
-                  <Plus className="w-3 h-3" /> Blank
+                  <Plus className="w-3 h-3" />
+                  <span className="hidden md:inline">Blank</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">New blank slide</TooltipContent>
@@ -113,7 +115,7 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden sf-layers-scroll">
-        <div className="flex gap-2 p-2 h-full" onDragLeave={handleDragLeave}>
+        <div className="flex gap-2 p-2 h-full items-center" onDragLeave={handleDragLeave}>
           {slides.map((slide, idx) => {
             const isDragging = dragIndex === idx
             const showBeforeIndicator = overIndex === idx && overPosition === "before" && dragIndex !== null && dragIndex !== idx
@@ -134,7 +136,7 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                   onDragEnd={handleDragEnd}
                   onClick={() => setCurrentSlide(slide.id)}
                   className={cn(
-                    "slide-thumb group relative w-32 h-[72px] rounded-md border-2 cursor-pointer shrink-0 overflow-hidden transition-all hover:shadow-md",
+                    "slide-thumb group relative w-24 h-[54px] xl:w-32 xl:h-[72px] rounded-md border-2 cursor-pointer shrink-0 overflow-hidden transition-all hover:shadow-md",
                     currentSlideId === slide.id ? "border-primary active shadow-sm shadow-primary/30" : "border-border hover:border-muted-foreground/40",
                     isDragging && "opacity-40 scale-95",
                     overIndex === idx && dragIndex !== null && dragIndex !== idx && "ring-2 ring-primary/40",
@@ -154,7 +156,7 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                     style={{
                       width: CANVAS_WIDTH,
                       height: CANVAS_HEIGHT,
-                      transform: `scale(${128 / CANVAS_WIDTH})`,
+                      transform: `scale(${96 / CANVAS_WIDTH})`,
                     }}
                   >
                     {slide.rawHtml ? (
