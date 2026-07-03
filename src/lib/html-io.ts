@@ -499,12 +499,16 @@ export function detectViewerSlideReferences(html: string): string[] {
     const scripts = Array.from(doc.querySelectorAll("script"))
     for (const script of scripts) {
       const text = script.textContent || ""
-      // Capture the literal prefix before the first numeric concatenation
-      // e.g. '"processed/slide_" +'  →  "processed/slide_"
-      // e.g. '`processed/slide_${i}.html`'  →  "processed/slide_"
+      // Capture the literal prefix before the first numeric concatenation.
+      // IMPORTANT: the separator character (`_` or `-`) is part of the
+      // captured group, NOT an optional non-capturing token — otherwise
+      // we lose the underscore and the prefix becomes unmatchable against
+      // files like `processed/slide_00.html`. Two patterns covered:
+      //   - String concat:  "processed/slide_" + i + ".html"
+      //   - Template literal: `processed/slide_${i}.html`
       const patterns = [
-        /["'`]([^"'`]*?(?:slide|page|section|deck|step))[_-]?["'`](?:\s*\+\s*|[^"'`]*?\$\{)/gi,
-        /["'`]([^"'`]*?["'`]\s*\+\s*[a-zA-Z_$][\w$]*\s*\+\s*["'`]\.html)/gi,
+        /["'`]([^"'`]*?(?:slide|page|section|deck|step)[_-]?)["'`](?:\s*\+\s*|[^"'`]*?\$\{)/gi,
+        /["'`]([^"'`]*?(?:slide|page|section|deck|step)[_-]?)["'`]\s*\+\s*[a-zA-Z_$][\w$]*\s*\+\s*["'`]\.html/gi,
       ]
       for (const re of patterns) {
         let m
