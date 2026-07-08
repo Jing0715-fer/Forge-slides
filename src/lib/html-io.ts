@@ -1,6 +1,17 @@
 import type { EditorElement, Slide, TextElement, ShapeElement, ImageElement, ContainerElement } from "@/types/editor"
 import { createTextElement, createShapeElement, createImageElement, createContainerElement } from "@/store/editor-store"
 
+// Monotonic counter + timestamp prefix makes collisions vanishingly unlikely
+// even when many IDs are generated in a single tick (the previous
+// Math.random().toString(36).slice(2) collided under bulk-import load and
+// surfaced as React duplicate-key warnings on LayersPanel / Canvas /
+// PresentationMode).
+let __sfIdCounter = 0
+function uniqueId(prefix = "sf"): string {
+  __sfIdCounter += 1
+  return `${prefix}-${Date.now().toString(36)}-${__sfIdCounter.toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 /**
  * Parse AI-generated HTML slide content into editor elements.
  * Accepts either:
@@ -181,7 +192,7 @@ ${cleanedSectionHtml}
 </html>`
 
     return {
-      id: Math.random().toString(36).slice(2),
+      id: uniqueId("slide"),
       name: title,
       background: detectedBg,
       // Per-slide canvas dimensions (so slides taller than 720px aren't clipped)
@@ -1097,6 +1108,10 @@ function parseSlideSection(section: Element, index: number): Slide {
       if (tag === "img") {
         const src = child.getAttribute("src") || ""
         const alt = child.getAttribute("alt") || "Image"
+        // Skip placeholder/broken images (no src) — they trigger React's
+        // "empty string passed to src" warning at render time and add nothing
+        // useful to the editor.
+        if (!src.trim()) return
         elements.push(
           createImageElement(src, {
             x, y, width: width || 200, height: height || 200,
@@ -1231,7 +1246,7 @@ function parseSlideSection(section: Element, index: number): Slide {
   const title = section.getAttribute("data-title")
 
   return {
-    id: Math.random().toString(36).slice(2),
+    id: uniqueId("el"),
     name: title || `Slide ${index + 1}`,
     background: bg,
     elements,
@@ -1420,7 +1435,7 @@ ${rawStyles}
   /* !important on html/body to win over any original CSS that sets
      html, body { width: 1280px; overflow: hidden; ... } which would
      clip the viewport at 1280px and cut off the right side. */
-  html, body { width: 100% !important; height: 100% !important; min-height: 100% !important; overflow: hidden !important; background: #000 !important; margin: 0 !important; padding: 0 !important; font-family: Inter, system-ui, sans-serif !important; }
+  html, body { width: 100% !important; height: 100% !important; min-height: 100% !important; overflow: hidden !important; background: transparent !important; margin: 0 !important; padding: 0 !important; font-family: Inter, system-ui, sans-serif !important; }
   .sf-viewport { width: 100vw !important; height: 100vh !important; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .sf-scaler { transform-origin: center center; position: relative; }
   /* Stage: no overflow clipping. The inner .slide div (from original HTML)

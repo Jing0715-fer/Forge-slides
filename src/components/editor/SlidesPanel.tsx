@@ -197,7 +197,7 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                             {(el as any).text?.slice(0, 30)}
                           </div>
                         )}
-                        {el.type === "image" && (
+                        {el.type === "image" && (el as any).src && (el as any).src.trim() && (
                           <img src={(el as any).src} alt="" className="w-full h-full" style={{ objectFit: (el as any).objectFit }} />
                         )}
                       </div>

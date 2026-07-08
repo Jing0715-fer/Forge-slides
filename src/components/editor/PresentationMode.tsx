@@ -469,7 +469,7 @@ function PresentationElement({ el }: { el: EditorElement }) {
       {el.type === "ellipse" && (
         <div style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
       )}
-      {el.type === "image" && (
+      {el.type === "image" && (el as any).src && (el as any).src.trim() && (
         <img
           src={(el as any).src}
           alt={(el as any).alt || ""}

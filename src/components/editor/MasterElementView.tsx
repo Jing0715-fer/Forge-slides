@@ -123,6 +123,7 @@ function renderContent(el: EditorElement, baseStyle: React.CSSProperties): React
     }
     case "image": {
       const i = el as ImageElement
+      if (!i.src || !i.src.trim()) return null
       return (
         <img
           src={i.src}

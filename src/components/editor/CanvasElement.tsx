@@ -687,6 +687,9 @@ function renderElementContent(
     case "image": {
       const i = element as ImageElement
       if (overlay) return null // iframe shows the image
+      // Guard: an image with empty/missing src is invalid and would trigger
+      // React's "empty string passed to src" warning. Render nothing.
+      if (!i.src || !i.src.trim()) return null
       return (
         <img
           src={i.src}
