@@ -167,7 +167,19 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                         sandbox="allow-same-origin allow-scripts"
                         title={`Slide ${idx + 1} preview`}
                       />
-                    ) : slide.elements.slice().sort((a, b) => a.zIndex - b.zIndex).map((el) => (
+                    ) : (() => {
+                      // Dedupe by id before rendering — defensive against
+                      // legacy project data with colliding ids.
+                      const seen = new Set<string>()
+                      return slide.elements
+                        .slice()
+                        .sort((a, b) => a.zIndex - b.zIndex)
+                        .filter((e) => {
+                          if (seen.has(e.id)) return false
+                          seen.add(e.id)
+                          return true
+                        })
+                        .map((el) => (
                       <div
                         key={el.id}
                         className="absolute"
@@ -201,7 +213,8 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                           <img src={(el as any).src} alt="" className="w-full h-full" style={{ objectFit: (el as any).objectFit }} />
                         )}
                       </div>
-                    ))}
+                        ))
+                    })()}
                   </div>
                   {/* Slide number */}
                   <div className="absolute top-1 left-1 text-[10px] font-mono font-medium bg-black/50 backdrop-blur-sm text-white rounded px-1.5 py-0.5">

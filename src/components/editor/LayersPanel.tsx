@@ -26,10 +26,21 @@ export function LayersPanel() {
     )
   }
 
+  // Dedupe by id before rendering — older project data persisted in
+  // localStorage/IndexedDB from before the idSeed fix can still contain
+  // duplicate sf-* ids (e.g. "sf-0" collisions on rescan). Without this
+  // guard React logs a "two children with the same key" warning on every
+  // render of this panel.
+  const seenIds = new Set<string>()
   const elements = slide.elements
     .slice()
     .sort((a, b) => b.zIndex - a.zIndex)
     .filter((e) => e.name.toLowerCase().includes(query.toLowerCase()))
+    .filter((e) => {
+      if (seenIds.has(e.id)) return false
+      seenIds.add(e.id)
+      return true
+    })
 
   return (
     <div className="w-48 xl:w-60 border-r border-border/40 flex flex-col h-full shrink-0 overflow-hidden" style={{ background: "linear-gradient(to bottom, rgba(253,242,248,0.9), rgba(255,255,255,0.7), rgba(245,243,255,0.85))" }}>

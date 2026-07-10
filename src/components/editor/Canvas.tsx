@@ -294,9 +294,21 @@ export function Canvas() {
                   // the new scan assigns different IDs. Drop any selectedIds
                   // that aren't in the new element set so the user starts
                   // from a clean slate when the iframe reloads.
-                  const newIds = new Set(newElements.map((e) => e.id))
+                  //
+                  // Also dedupe by id — a defensive last-line guard against
+                  // any path that could push two elements with the same id
+                  // into slide.elements. React would then log "two children
+                  // with the same key" on every .map() in LayersPanel /
+                  // SlidesPanel / Canvas overlays.
+                  const seenIds = new Set<string>()
+                  const dedupedElements = newElements.filter((e) => {
+                    if (seenIds.has(e.id)) return false
+                    seenIds.add(e.id)
+                    return true
+                  })
+                  const newIds = seenIds
                   useEditor.setState({
-                    slides: slides.map(s => s.id === slide.id ? { ...s, elements: newElements } : s),
+                    slides: slides.map(s => s.id === slide.id ? { ...s, elements: dedupedElements } : s),
                     selectedIds: selectedIds.filter((id) => newIds.has(id)),
                     editingId: null,
                   })
@@ -686,6 +698,22 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
             item.y + item.height <= accepted.y + accepted.height + 1
           )
           if (containingParent) {
+            // The parent needs to be SUBSTANTIALLY larger than the child
+            // (≥1.4× on each axis) before we treat the child as a
+            // "subset text". Without this guard, two adjacent paragraphs
+            // of similar size but the same text colour (which is the
+            // common case in AI-generated HTML — most text doesn't
+            // override `color`, so it inherits and computes to the same
+            // RGB) get collapsed into a single layer.
+            const wRatio = containingParent.width / Math.max(1, item.width)
+            const hRatio = containingParent.height / Math.max(1, item.height)
+            const parentIsSubstantiallyLarger = wRatio >= 1.4 && hRatio >= 1.4
+            if (!parentIsSubstantiallyLarger) {
+              // Same size / near-same size → they're peers, not
+              // parent/child. Keep both.
+              finalItems.push(item)
+              continue
+            }
             // If the child has a different color than the parent, keep it as a
             // separately selectable element (e.g., accent-colored numbers/keywords)
             const parentColor = containingParent.computedStyle?.color
@@ -693,7 +721,7 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
             if (parentColor && childColor && parentColor !== childColor) {
               // Keep the child — it has a distinct style
             } else {
-              // Same color — skip the child (parent already covers it)
+              // Same color + parent substantially larger → skip the child
               continue
             }
           }
