@@ -25,6 +25,12 @@ export function PresentationMode({ open, onOpenChange }: Props) {
   const [elapsed, setElapsed] = useState(0)
   const [showControls, setShowControls] = useState(true)
   const [showNotes, setShowNotes] = useState(false)
+  // Live viewport size — drives the slide scale. Updates on resize and
+  // fullscreen-toggle so the slide always fits the current window.
+  const [viewport, setViewport] = useState<{ w: number; h: number }>(() => ({
+    w: typeof window !== "undefined" ? window.innerWidth : 1280,
+    h: typeof window !== "undefined" ? window.innerHeight : 720,
+  }))
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Track previous values to detect transitions (React-recommended "adjust state during render" pattern)
   const [prevOpen, setPrevOpen] = useState(false)
@@ -124,6 +130,32 @@ export function PresentationMode({ open, onOpenChange }: Props) {
     return () => document.removeEventListener("fullscreenchange", onFsChange)
   }, [])
 
+  // Window resize listener — recomputes the slide scale factor so the
+  // current slide always fits the visible window. rAF-throttled so a
+  // window-drag doesn't fire dozens of state updates per second.
+  useEffect(() => {
+    if (!open) return
+    let raf = 0
+    const onResize = () => {
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        setViewport({
+          w: window.innerWidth,
+          h: window.innerHeight,
+        })
+      })
+    }
+    window.addEventListener("resize", onResize)
+    // Also sync once when presentation mode opens — the user may have
+    // resized the editor window before going into Present.
+    onResize()
+    return () => {
+      window.removeEventListener("resize", onResize)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [open])
+
   // Auto-play timer
   useEffect(() => {
     if (!open || !autoPlay) return
@@ -169,9 +201,27 @@ export function PresentationMode({ open, onOpenChange }: Props) {
   const slide = slides[index]
   if (!slide) return null
 
-  // Render slide content at native resolution, scaled to fit viewport
+  // Render slide content at native resolution, scaled to fit viewport.
+  // CRITICAL: use the CURRENT slide's width/height (which the user can
+  // override per-page via the SLIDE SIZE control in the PropertyPanel),
+  // not a hard-coded 16:9 assumption. Without this, a 4:3 slide presented
+  // in a 16:9 viewport letterboxes correctly but a 16:9 slide presented
+  // in a 4:3 viewer overflows — and any non-default size (1080×1080,
+  // 1280×800, etc.) gets visibly mis-scaled.
+  const slideW = slide.width || CANVAS_WIDTH
+  const slideH = slide.height || CANVAS_HEIGHT
+  const vw = viewport.w
+  const vh = viewport.h
+  // Use both viewport and the slide area (line 194 below reserves space
+  // for the nav bar at the bottom). Subtracting a few px for the bottom
+  // nav prevents the slide from being clipped behind the controls.
+  const stageW = vw
+  const stageH = Math.max(120, vh - 64)
+  const scaleFactor = Math.min(stageW / slideW, stageH / slideH)
+
+  // Sorted copy used by the React-rendered path (smart / pure-React mode).
+  // The rawHtml path doesn't use this — it renders an iframe directly.
   const slideElements = slide.elements.slice().sort((a, b) => a.zIndex - b.zIndex)
-  const scaleFactor = (typeof window !== "undefined" ? Math.min(window.innerWidth, window.innerHeight * 16 / 9) : 1280) / CANVAS_WIDTH
 
   const transitionClass =
     transition === "fade"
@@ -196,8 +246,18 @@ export function PresentationMode({ open, onOpenChange }: Props) {
           key={animKey}
           className={cn("relative shadow-2xl", transitionClass)}
           style={{
-            width: "min(100vw, calc(100vh * 16 / 9))",
-            height: "min(100vh, calc(100vw * 9 / 16))",
+            // The wrapper is sized to the SLIDE'S scaled dimensions, not
+            // a 16:9 letterbox. This way:
+            //   - 4:3 slides don't get stretched into 16:9
+            //   - 1080×1080 square slides don't get letterboxed
+            //   - Any per-page size (set via the SLIDE SIZE control in
+            //     PropertyPanel) renders correctly
+            // The inner content (iframe or React elements) is sized to the
+            // slide's native dimensions and then scaled by `scaleFactor`,
+            // so `width * scaleFactor` and `height * scaleFactor` equal the
+            // wrapper's size — no overflow, no letterboxing.
+            width: slideW * scaleFactor,
+            height: slideH * scaleFactor,
             background: slide.background,
             backgroundImage: slide.backgroundImage ? `url(${slide.backgroundImage})` : undefined,
             backgroundSize: "cover",
@@ -214,8 +274,8 @@ export function PresentationMode({ open, onOpenChange }: Props) {
                 position: "absolute",
                 top: 0,
                 left: 0,
-                width: slide.width || CANVAS_WIDTH,
-                height: slide.height || CANVAS_HEIGHT,
+                width: slideW,
+                height: slideH,
                 transform: `scale(${scaleFactor})`,
                 transformOrigin: "top left",
               }}
@@ -238,8 +298,8 @@ export function PresentationMode({ open, onOpenChange }: Props) {
             <div
               className="absolute top-0 left-0 origin-top-left"
               style={{
-                width: slide.width || CANVAS_WIDTH,
-                height: slide.height || CANVAS_HEIGHT,
+                width: slideW,
+                height: slideH,
                 transform: `scale(${scaleFactor})`,
               }}
             >
