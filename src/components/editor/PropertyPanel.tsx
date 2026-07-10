@@ -45,15 +45,16 @@ function SlideSizeControl({ slide }: { slide: Slide }) {
   // a local string buffer so the user can type partial values (e.g. clear
   // the field and start typing) without React reverting mid-edit. We
   // commit to the store on blur or Enter.
+  //
+  // The component is keyed on `slide.id` from the parent, so when the
+  // active slide changes React unmounts this component and the initial
+  // useState picks up the new slide's width/height. No setState-in-effect
+  // needed (which would trip the react-hooks/set-state-in-effect lint
+  // rule and also fight the user while they're typing).
   const currentW = slide.width ?? 1280
   const currentH = slide.height ?? 720
   const [w, setW] = React.useState(String(currentW))
   const [h, setH] = React.useState(String(currentH))
-
-  // Re-sync local input state when the active slide changes (e.g. user
-  // switches to another slide and back). Done via the `key` prop pattern
-  // — no setState-in-effect needed.
-  const slideKey = `${slide.id}:${currentW}:${currentH}`
 
   const commit = () => {
     const newW = Number(w) || 0
@@ -64,7 +65,7 @@ function SlideSizeControl({ slide }: { slide: Slide }) {
   }
 
   return (
-    <div className="space-y-2" key={slideKey}>
+    <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
         <div>
           <Label className="text-[10px] text-muted-foreground">Width</Label>
@@ -207,7 +208,7 @@ function ExactModePanel({ slide }: { slide: Slide }) {
           Per-page resolution. Affects the editor canvas, thumbnails, and the
           presentation-mode wrapper for this slide only.
         </p>
-        <SlideSizeControl slide={slide} />
+        <SlideSizeControl key={slide.id} slide={slide} />
       </div>
     </div>
   )
@@ -236,7 +237,7 @@ function EmptyPanel() {
           Per-page resolution — affects this slide's editor canvas, thumbnail,
           and presentation-mode render only.
         </p>
-        <SlideSizeControl slide={slide} />
+        <SlideSizeControl key={slide.id} slide={slide} />
       </div>
       <div className="p-4 text-sm text-muted-foreground">
         <p className="mb-2 font-medium text-foreground">Tips</p>
