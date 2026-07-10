@@ -87,7 +87,10 @@ export function Canvas() {
 
   // Background pointer down: start marquee selection or clear
   function onCanvasPointerDown(e: React.PointerEvent) {
-    if (e.target !== e.currentTarget && (e.target as HTMLElement).id !== "editor-canvas-inner") {
+    const targetId = (e.target as HTMLElement).id
+    // Only fire marquee when user clicked the slide background (canvas
+    // wrapper, canvas-bg, or canvas-inner) — never when clicking an element.
+    if (targetId !== "editor-canvas" && targetId !== "editor-canvas-bg" && targetId !== "editor-canvas-inner") {
       return
     }
     if (e.button !== 0) return
@@ -161,21 +164,40 @@ export function Canvas() {
         <div
           id="editor-canvas"
           onPointerDown={onCanvasPointerDown}
-          className="relative sf-canvas-shadow rounded-sm overflow-hidden"
+          className="relative sf-canvas-shadow rounded-sm"
           style={{
             // Use per-slide dimensions when set (e.g. imported Z.ai decks
             // with 1280×900 layouts). Fall back to the standard 1280×720.
             width: (slide.width || CANVAS_WIDTH) * zoom,
             height: (slide.height || CANVAS_HEIGHT) * zoom,
-            ...(slide.background && slide.background.includes("gradient")
-              ? { backgroundImage: slide.background, backgroundSize: "cover", backgroundPosition: "center" }
-              : { backgroundColor: slide.background }),
-            ...(slide.backgroundImage
-              ? { backgroundImage: `url(${slide.backgroundImage})`, backgroundSize: "cover", backgroundPosition: "center" }
-              : {}),
+            // No overflow-hidden: allow off-canvas elements to be visible so
+            // they can be selected, dragged and resized. The slide background
+            // is painted on the inner div below so it stays bounded to the
+            // slide's nominal canvas while elements can extend beyond.
+            overflow: "visible",
           }}
         >
-          {/* Inner canvas at native resolution */}
+          {/* Slide background — bounded to the nominal slide area (1280×720
+              or per-slide size). Inner div carries the bg color/gradient/image
+              so the outer canvas wrapper can be overflow:visible. The id
+              "editor-canvas-bg" lets onCanvasPointerDown recognize a click on
+              the slide background as a marquee start. */}
+          <div
+            id="editor-canvas-bg"
+            className="absolute top-0 left-0 origin-top-left"
+            style={{
+              width: slide.width || CANVAS_WIDTH,
+              height: slide.height || CANVAS_HEIGHT,
+              transform: `scale(${zoom})`,
+              ...(slide.background && slide.background.includes("gradient")
+                ? { backgroundImage: slide.background, backgroundSize: "cover", backgroundPosition: "center" }
+                : { backgroundColor: slide.background }),
+              ...(slide.backgroundImage
+                ? { backgroundImage: `url(${slide.backgroundImage})`, backgroundSize: "cover", backgroundPosition: "center" }
+                : {}),
+            }}
+          />
+          {/* Inner canvas at native resolution — holds elements + grid */}
           <div
             id="editor-canvas-inner"
             className="absolute top-0 left-0 origin-top-left"
@@ -456,13 +478,19 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
       // We look for: text elements (h1-h6, p, span, div with text), images, and shapes
       const bodyRect = doc.body.getBoundingClientRect()
       const items: OverlayItem[] = []
+      // Seed the per-scan counter with a per-slide prefix so IDs are unique
+      // across slides even though the local counter resets on every iframe
+      // reload. The per-slide prefix (slideId) is stable, so reloading the
+      // same slide's iframe produces the same IDs — undo/redo history
+      // references stay valid.
       let idCounter = 0
+      const idSeed = `${slideId}`
 
       // Assign unique data-sf-id to each element for later lookup
       function assignId(el: HTMLElement): string {
         let id = el.getAttribute("data-sf-id")
         if (!id) {
-          id = "sf-" + (idCounter++)
+          id = `sf-${idSeed}-${(idCounter++).toString(36)}`
           el.setAttribute("data-sf-id", id)
         }
         return id
@@ -608,8 +636,16 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
 
       scanElements(doc.body)
 
-      // Remove duplicate overlays (same position+size)
+      // Belt-and-suspenders dedup: drop items with duplicate IDs (a safety net
+      // for any path where two items could share an ID — e.g., React batching
+      // two scans before the iframe DOM stabilises). This is the only dedup
+      // that actually prevents the React "two children with the same key, sf-0"
+      // console error.
+      const seenIds = new Set<string>()
       let uniqueItems = items.filter((item, idx, arr) => {
+        if (seenIds.has(item.id)) return false
+        seenIds.add(item.id)
+        // Also dedupe by position+size as before (same element scanned twice)
         return idx === arr.findIndex(i => i.x === item.x && i.y === item.y && i.width === item.width && i.height === item.height)
       })
 
