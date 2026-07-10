@@ -218,7 +218,7 @@ export function Canvas() {
               the slide background as a marquee start. */}
           <div
             id="editor-canvas-bg"
-            className="absolute top-0 left-0 origin-top-left"
+            className="absolute top-0 left-0 origin-top-left pointer-events-none"
             style={{
               width: slide.width || CANVAS_WIDTH,
               height: slide.height || CANVAS_HEIGHT,
