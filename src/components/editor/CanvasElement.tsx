@@ -35,7 +35,7 @@ export function CanvasElementView({ element, selected, editing, overlay }: Props
   const ref = useRef<HTMLDivElement>(null)
   const dragRef = useRef<DragState | null>(null)
   const [snapGuides, setSnapGuides] = useState<GuideLine[]>([])
-  const { setSelected, toggleSelected, updateElement, updateElements, setEditing, currentSlide } = useEditor()
+  const { setSelected, toggleSelected, updateElement, updateElements, setEditing, currentSlide, pushHistorySnapshot } = useEditor()
   const slide = currentSlide()
 
   // Helper to get canvas-space pointer position
@@ -164,10 +164,14 @@ export function CanvasElementView({ element, selected, editing, overlay }: Props
     const slideEls = slide.elements.filter((el) => !groupIds.has(el.id) && el.visible)
     const others: Box[] = slideEls.map((el) => ({ x: el.x, y: el.y, width: el.width, height: el.height }))
 
-    // Push a snapshot to history so undo rolls back the whole drag
-    const state = useEditor.getState()
-    const past = [...state.past, structuredClone(state.slides)].slice(-50)
-    useEditor.setState({ past, future: [] })
+    // Push a snapshot to history so undo rolls back the whole drag.
+    // Use pushHistorySnapshot (proper HistoryEntry with label/icon/timestamp)
+    // — directly pushing structuredClone(slides) into past pollutes the history
+    // array with bare Slide[] entries that the undo action can't decode,
+    // causing subsequent undos to silently no-op (and, on the next undo,
+    // look like the slide "closed" because currentSlideId's slide is no
+    // longer in the restored slides array).
+    pushHistorySnapshot(mode === "move" ? "Move element" : "Resize element", "Move")
 
     dragRef.current = {
       mode,

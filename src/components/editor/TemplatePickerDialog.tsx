@@ -22,14 +22,15 @@ export function TemplatePickerDialog({ open, onOpenChange }: Props) {
     if (!template) return
     const slide = template.build()
     slide.name = `Slide ${slides.length + 1}`
-    // Add via store - we need to replicate addSlide but with our slide
+    // Add via store - we need to replicate addSlide but with our slide.
+    // pushHistorySnapshot must be called BEFORE the slides change so the
+    // history captures the pre-add state, not the post-add state.
+    useEditor.getState().pushHistorySnapshot("Add template slide", "Plus")
     useEditor.setState((s) => {
-      const past = [...s.past, structuredClone(s.slides)]
       return {
         slides: [...s.slides, slide],
         currentSlideId: slide.id,
         selectedIds: [],
-        past: past.slice(-50),
         future: [],
       }
     })

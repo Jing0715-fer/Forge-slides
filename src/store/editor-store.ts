@@ -390,6 +390,11 @@ interface EditorState {
   setSlideName: (id: string, name: string) => void
   setSlideNotes: (id: string, notes: string) => void
   setSlideTransition: (id: string, transition: "none" | "fade" | "slide" | "zoom" | "inherit") => void
+  // Per-slide canvas size. Undefined falls back to CANVAS_WIDTH × CANVAS_HEIGHT
+  // (1280×720). Setting an explicit size lets the slide render at a different
+  // aspect ratio — e.g. a 16:10 deck at 1280×800, a 4:3 deck at 1024×768, or
+  // a presentation at 1920×1080 for a high-DPI export.
+  setSlideSize: (id: string, width: number, height: number) => void
   // Master elements
   promoteToMaster: (ids: string[]) => void
   demoteFromMaster: (ids: string[]) => void
@@ -947,6 +952,18 @@ export const useEditor = create<EditorState>((set, get) => ({
         sl.id === id ? { ...sl, transition } : sl,
       )
       return { slides, past: pushHistory(s.past, s.slides, "Set transition", "Sparkles"), future: [] }
+    })
+  },
+
+  setSlideSize: (id, width, height) => {
+    set((s) => {
+      // Clamp to sane bounds so the slide can't be sized to 0×0 or 99999×99999.
+      const w = Math.max(80, Math.min(8192, Math.round(width)))
+      const h = Math.max(60, Math.min(8192, Math.round(height)))
+      const slides = s.slides.map((sl) =>
+        sl.id === id ? { ...sl, width: w, height: h } : sl,
+      )
+      return { slides, past: pushHistory(s.past, s.slides, "Resize slide", "Maximize2"), future: [] }
     })
   },
 

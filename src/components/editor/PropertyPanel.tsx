@@ -18,8 +18,120 @@ import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   ArrowUpToLine, ArrowDownToLine, Lock, Unlock, Eye, EyeOff,
+  Maximize2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+// Preset slide sizes — the most common presentation aspect ratios at their
+// native pixel dimensions. Picked because PowerPoint / Keynote / Google
+// Slides all use the same canonical sizes for their defaults.
+const SLIDE_SIZE_PRESETS: { label: string; w: number; h: number }[] = [
+  { label: "16:9 · 1280×720", w: 1280, h: 720 },
+  { label: "16:9 · 1920×1080", w: 1920, h: 1080 },
+  { label: "16:10 · 1280×800", w: 1280, h: 800 },
+  { label: "4:3 · 1024×768", w: 1024, h: 768 },
+  { label: "A4 landscape", w: 1123, h: 794 },
+  { label: "Square · 1080", w: 1080, h: 1080 },
+]
+
+// Per-slide canvas size control. The width/height fields drive the editor
+// canvas, the slide thumbnails, and the presentation-mode wrapper (each
+// reads slide.width / slide.height and falls back to CANVAS_WIDTH ×
+// CANVAS_HEIGHT). Changing this lets the user re-format a single page for
+// a different aspect ratio without affecting any other slide.
+function SlideSizeControl({ slide }: { slide: Slide }) {
+  const { setSlideSize } = useEditor()
+  // The slide is the source of truth. We track the "committed" value as
+  // a local string buffer so the user can type partial values (e.g. clear
+  // the field and start typing) without React reverting mid-edit. We
+  // commit to the store on blur or Enter.
+  const currentW = slide.width ?? 1280
+  const currentH = slide.height ?? 720
+  const [w, setW] = React.useState(String(currentW))
+  const [h, setH] = React.useState(String(currentH))
+
+  // Re-sync local input state when the active slide changes (e.g. user
+  // switches to another slide and back). Done via the `key` prop pattern
+  // — no setState-in-effect needed.
+  const slideKey = `${slide.id}:${currentW}:${currentH}`
+
+  const commit = () => {
+    const newW = Number(w) || 0
+    const newH = Number(h) || 0
+    if (newW !== currentW || newH !== currentH) {
+      setSlideSize(slide.id, newW, newH)
+    }
+  }
+
+  return (
+    <div className="space-y-2" key={slideKey}>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-[10px] text-muted-foreground">Width</Label>
+          <Input
+            type="number"
+            min={80}
+            max={8192}
+            value={w}
+            onChange={(e) => setW(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                commit()
+                ;(e.target as HTMLInputElement).blur()
+              }
+            }}
+            className="h-7 text-xs"
+          />
+        </div>
+        <div>
+          <Label className="text-[10px] text-muted-foreground">Height</Label>
+          <Input
+            type="number"
+            min={60}
+            max={8192}
+            value={h}
+            onChange={(e) => setH(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                commit()
+                ;(e.target as HTMLInputElement).blur()
+              }
+            }}
+            className="h-7 text-xs"
+          />
+        </div>
+      </div>
+      <Select
+        value=""
+        onValueChange={(v) => {
+          if (!v) return
+          const preset = SLIDE_SIZE_PRESETS.find((p) => `${p.w}x${p.h}` === v)
+          if (preset) {
+            setW(String(preset.w))
+            setH(String(preset.h))
+            setSlideSize(slide.id, preset.w, preset.h)
+          }
+        }}
+      >
+        <SelectTrigger className="h-7 text-xs">
+          <Maximize2 className="w-3 h-3 mr-1.5" />
+          <SelectValue placeholder="Apply preset…" />
+        </SelectTrigger>
+        <SelectContent>
+          {SLIDE_SIZE_PRESETS.map((p) => (
+            <SelectItem key={p.label} value={`${p.w}x${p.h}`}>
+              {p.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
 
 export function PropertyPanel() {
   const { selectedIds, currentSlide, updateElement, bringToFront, sendToBack } = useEditor()
@@ -89,6 +201,14 @@ function ExactModePanel({ slide }: { slide: Slide }) {
         <h4 className="text-xs font-semibold mb-2 text-muted-foreground">BACKGROUND</h4>
         <ColorField label="Background Color" value={slide.background} onChange={(c) => setSlideBackground(slide.id, c)} />
       </div>
+      <div className="p-4 border-b">
+        <h4 className="text-xs font-semibold mb-2 text-muted-foreground">SLIDE SIZE</h4>
+        <p className="text-[10px] text-muted-foreground mb-2">
+          Per-page resolution. Affects the editor canvas, thumbnails, and the
+          presentation-mode wrapper for this slide only.
+        </p>
+        <SlideSizeControl slide={slide} />
+      </div>
     </div>
   )
 }
@@ -109,6 +229,14 @@ function EmptyPanel() {
             allowGradient
           />
         </div>
+      </div>
+      <div className="p-4 border-b">
+        <h4 className="text-xs font-semibold mb-2 text-muted-foreground">SLIDE SIZE</h4>
+        <p className="text-[10px] text-muted-foreground mb-2">
+          Per-page resolution — affects this slide's editor canvas, thumbnail,
+          and presentation-mode render only.
+        </p>
+        <SlideSizeControl slide={slide} />
       </div>
       <div className="p-4 text-sm text-muted-foreground">
         <p className="mb-2 font-medium text-foreground">Tips</p>
