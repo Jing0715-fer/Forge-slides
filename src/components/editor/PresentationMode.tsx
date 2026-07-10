@@ -204,27 +204,58 @@ export function PresentationMode({ open, onOpenChange }: Props) {
             backgroundPosition: "center",
           }}
         >
-          {/* Render elements scaled to fit */}
-          <div
-            className="absolute top-0 left-0 origin-top-left"
-            style={{
-              width: slide.width || CANVAS_WIDTH,
-              height: slide.height || CANVAS_HEIGHT,
-              transform: `scale(${scaleFactor})`,
-            }}
-          >
-            {/* Master elements (rendered first = behind) */}
-            {masterVisible && masterElements.length > 0 && (
-              <>
-                {masterElements.slice().sort((a, b) => a.zIndex - b.zIndex).map((el) => (
-                  <PresentationElement key={`master-${el.id}`} el={el} />
-                ))}
-              </>
-            )}
-            {slideElements.map((el) => (
-              <PresentationElement key={el.id} el={el} />
-            ))}
-          </div>
+          {slide.rawHtml ? (
+            // rawHtml mode: render the iframe at its native slide dimensions
+            // and scale it to fit the wrapper. No duplicate React elements —
+            // the iframe already shows everything (text, images, layout) from
+            // the original imported HTML.
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: slide.width || CANVAS_WIDTH,
+                height: slide.height || CANVAS_HEIGHT,
+                transform: `scale(${scaleFactor})`,
+                transformOrigin: "top left",
+              }}
+            >
+              <iframe
+                srcDoc={slide.rawHtml}
+                sandbox="allow-same-origin allow-scripts"
+                title={`Slide ${index + 1}`}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  border: 0,
+                  display: "block",
+                  background: "transparent",
+                }}
+              />
+            </div>
+          ) : (
+            // Smart / pure-React mode: render slide elements directly.
+            <div
+              className="absolute top-0 left-0 origin-top-left"
+              style={{
+                width: slide.width || CANVAS_WIDTH,
+                height: slide.height || CANVAS_HEIGHT,
+                transform: `scale(${scaleFactor})`,
+              }}
+            >
+              {/* Master elements (rendered first = behind) */}
+              {masterVisible && masterElements.length > 0 && (
+                <>
+                  {masterElements.slice().sort((a, b) => a.zIndex - b.zIndex).map((el) => (
+                    <PresentationElement key={`master-${el.id}`} el={el} />
+                  ))}
+                </>
+              )}
+              {slideElements.map((el) => (
+                <PresentationElement key={el.id} el={el} />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Navigation arrows */}

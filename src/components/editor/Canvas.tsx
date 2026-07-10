@@ -289,8 +289,16 @@ export function Canvas() {
                     }
                     return { ...base, type: "rect" as const }
                   })
+                  // Stale selectedIds from the previous iframe scan can leave
+                  // selection pointing at elements that no longer exist after
+                  // the new scan assigns different IDs. Drop any selectedIds
+                  // that aren't in the new element set so the user starts
+                  // from a clean slate when the iframe reloads.
+                  const newIds = new Set(newElements.map((e) => e.id))
                   useEditor.setState({
                     slides: slides.map(s => s.id === slide.id ? { ...s, elements: newElements } : s),
+                    selectedIds: selectedIds.filter((id) => newIds.has(id)),
+                    editingId: null,
                   })
                 }}
               />
@@ -436,6 +444,12 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
     height: number
     label: string
     type: "text" | "image" | "shape" | "container"
+    // DOM nesting depth (0 = direct child of body). Used to compute z-index
+    // so deeper elements render BELOW shallower ones — this prevents the
+    // "can't click an outer element because a nested inner one is on top"
+    // problem. Click on an overlap → outer wins, user can pick the inner
+    // via Tab/cycle or by dragging the outer away first.
+    depth: number
     // Reference to the iframe element (by index in a lookup)
     iframeSelector: string
     // Computed text styles from the iframe element (for text overlays)
@@ -496,7 +510,7 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
         return id
       }
 
-      function scanElements(root: Element) {
+      function scanElements(root: Element, depth: number) {
         Array.from(root.children).forEach((child) => {
           const tag = child.tagName.toLowerCase()
           if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") return
@@ -507,19 +521,19 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
 
           // Skip elements with zero size
           if (rect.width < 2 && rect.height < 2) {
-            scanElements(child)
+            scanElements(child, depth + 1)
             return
           }
 
           // Skip elements outside the slide
           if (rect.right < 0 || rect.bottom < 0 || rect.left > 1280 || rect.top > 720) {
-            scanElements(child)
+            scanElements(child, depth + 1)
             return
           }
 
           // Skip elements with display:none
           if (cs.display === "none" || cs.visibility === "hidden" || parseFloat(cs.opacity) === 0) {
-            scanElements(child)
+            scanElements(child, depth + 1)
             return
           }
 
@@ -624,17 +638,18 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
               x, y, width: w, height: h,
               label,
               type,
+              depth,
               iframeSelector: `[data-sf-id="${sfId}"]`,
               computedStyle,
             })
           }
 
           // Always recurse into children (for finer granularity)
-          scanElements(child)
+          scanElements(child, depth + 1)
         })
       }
 
-      scanElements(doc.body)
+      scanElements(doc.body, 0)
 
       // Belt-and-suspenders dedup: drop items with duplicate IDs (a safety net
       // for any path where two items could share an ID — e.g., React batching
@@ -1023,7 +1038,11 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
             height: item.height,
             background: "transparent",
             border: selectedOverlay === item.id ? "2px solid #6366f1" : "1px dashed transparent",
-            zIndex: 100,
+            // Shallower (less nested) elements get HIGHER z-index so the
+            // outer container of a nested stack is selectable. Without this,
+            // the deepest nested overlay always wins the click race and
+            // "outer" elements become unclickable.
+            zIndex: 100 + Math.max(0, 20 - item.depth),
           }}
           title={item.label}
         >

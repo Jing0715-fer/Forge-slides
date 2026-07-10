@@ -583,7 +583,12 @@ function renderElementContent(
         return (
           <textarea
             autoFocus
-            defaultValue={t.text}
+            // Controlled (not defaultValue): when the store updates text
+            // (e.g. via Find/Replace, undo, or programmatic setText), the
+            // textarea re-syncs immediately instead of ignoring the new
+            // value. Without this, edits from external code paths silently
+            // get clobbered on the next render.
+            value={t.text}
             onChange={(e) => onTextChange(e.target.value)}
             onBlur={() => useEditor.getState().setEditing(null)}
             onPointerDown={(e) => e.stopPropagation()}
