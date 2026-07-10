@@ -252,14 +252,47 @@ export function Canvas() {
                 }}
                 onOverlaysUpdate={(items) => {
                   // Store overlay items as elements in the slide so they
-                  // appear in the Layers panel and PropertyPanel can edit them
+                  // appear in the Layers panel and PropertyPanel can edit them.
+                  //
+                  // CRITICAL: don't blow away user-added elements (anything
+                  // whose id doesn't start with "sf-"). User-added elements
+                  // are created by Toolbar / addElement() with `uuid()` v4
+                  // ids; iframe-scan elements use `sf-{slideId}-{N}`. The
+                  // original code did `slide.elements = items.map(...)` and
+                  // lost every user-added element on every iframe reload,
+                  // which is why the user reported "some elements became
+                  // unselectable / uneditable" after the sf-* dedup fix.
                   const { slides, selectedIds } = useEditor.getState()
                   const currentSlide = slides.find(s => s.id === slide.id)
                   if (!currentSlide) return
-                  // Only update if element count changed (avoid infinite loops)
-                  if (currentSlide.elements.length === items.length && 
-                      currentSlide.elements[0]?.id === items[0]?.id) return
-                  const newElements: EditorElement[] = items.map(item => {
+                  const isScanId = (id: string) => id.startsWith("sf-")
+                  const existingScanElements = currentSlide.elements.filter(
+                    (e) => isScanId(e.id),
+                  )
+                  const userElements = currentSlide.elements.filter(
+                    (e) => !isScanId(e.id),
+                  )
+                  // Fast-path: skip the setState if the scan produced
+                  // exactly the same ids and positions as what's already
+                  // stored. Avoids the infinite-loop guard from firing
+                  // every render.
+                  if (
+                    existingScanElements.length === items.length &&
+                    existingScanElements.every((e, idx) => {
+                      const it = items[idx]
+                      return (
+                        it &&
+                        e.id === it.id &&
+                        e.x === it.x &&
+                        e.y === it.y &&
+                        e.width === it.width &&
+                        e.height === it.height
+                      )
+                    })
+                  ) {
+                    return
+                  }
+                  const newElements: EditorElement[] = items.map((item) => {
                     const base = {
                       id: item.id,
                       name: item.label,
@@ -289,27 +322,31 @@ export function Canvas() {
                     }
                     return { ...base, type: "rect" as const }
                   })
-                  // Stale selectedIds from the previous iframe scan can leave
-                  // selection pointing at elements that no longer exist after
-                  // the new scan assigns different IDs. Drop any selectedIds
-                  // that aren't in the new element set so the user starts
-                  // from a clean slate when the iframe reloads.
-                  //
-                  // Also dedupe by id — a defensive last-line guard against
-                  // any path that could push two elements with the same id
-                  // into slide.elements. React would then log "two children
-                  // with the same key" on every .map() in LayersPanel /
-                  // SlidesPanel / Canvas overlays.
+                  // Dedupe by id (defensive) then merge user elements back in.
+                  // User elements get a high zIndex band so they always render
+                  // on top of the scanned iframe content.
                   const seenIds = new Set<string>()
-                  const dedupedElements = newElements.filter((e) => {
+                  const dedupedScanElements = newElements.filter((e) => {
                     if (seenIds.has(e.id)) return false
                     seenIds.add(e.id)
                     return true
                   })
-                  const newIds = seenIds
+                  const merged = [
+                    ...dedupedScanElements,
+                    ...userElements,
+                  ]
+                  // Stale scan-only selection: if a previously-selected id is
+                  // no longer in the scan results (iframe reloaded with
+                  // different content), drop just that id — but preserve
+                  // selection of user-added elements.
+                  const newScanIds = seenIds
                   useEditor.setState({
-                    slides: slides.map(s => s.id === slide.id ? { ...s, elements: dedupedElements } : s),
-                    selectedIds: selectedIds.filter((id) => newIds.has(id)),
+                    slides: slides.map((s) =>
+                      s.id === slide.id ? { ...s, elements: merged } : s,
+                    ),
+                    selectedIds: selectedIds.filter(
+                      (id) => isScanId(id) ? newScanIds.has(id) : true,
+                    ),
                     editingId: null,
                   })
                 }}
