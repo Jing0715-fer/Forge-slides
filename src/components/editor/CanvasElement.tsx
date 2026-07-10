@@ -38,18 +38,23 @@ export function CanvasElementView({ element, selected, editing, overlay }: Props
   const { setSelected, toggleSelected, updateElement, updateElements, setEditing, currentSlide, pushHistorySnapshot } = useEditor()
   const slide = currentSlide()
 
-  // Helper to get canvas-space pointer position
+  // Helper to get canvas-space pointer position. The zoom divisor uses
+  // the CURRENT slide's width (not CANVAS_WIDTH) so that non-default
+  // slide sizes (1920×1080, 1280×800, etc.) scale correctly. Without
+  // this, dragging an overlay on a 1920px-wide slide would translate
+  // by the wrong amount in canvas coords.
   const getCanvasPos = useCallback((clientX: number, clientY: number) => {
     const canvas = document.getElementById("editor-canvas")
     if (!canvas) return { x: 0, y: 0, zoom: 1 }
     const rect = canvas.getBoundingClientRect()
-    const zoom = rect.width / CANVAS_WIDTH
+    const slideW = slide?.width || CANVAS_WIDTH
+    const zoom = rect.width / slideW
     return {
       x: (clientX - rect.left) / zoom,
       y: (clientY - rect.top) / zoom,
       zoom,
     }
-  }, [])
+  }, [slide?.width])
 
   // Single source of truth for pointer move during drag
   useEffect(() => {
@@ -406,9 +411,13 @@ export function CanvasElementView({ element, selected, editing, overlay }: Props
       setSnapGuides([])
       window.removeEventListener("pointermove", onMove)
       window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onUp)
+      window.removeEventListener("blur", onUp)
     }
     window.addEventListener("pointermove", onMove)
     window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onUp)
+    window.addEventListener("blur", onUp)
   }
 
   const wrapperStyle: React.CSSProperties = {

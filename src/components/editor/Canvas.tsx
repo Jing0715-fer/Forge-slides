@@ -1,11 +1,33 @@
 "use client"
-
 import React, { useEffect, useRef, useState } from "react"
 import { useEditor, CANVAS_WIDTH, CANVAS_HEIGHT, createTextElement, createShapeElement, createImageElement, createContainerElement } from "@/store/editor-store"
 import { CanvasElementView } from "./CanvasElement"
 import { MasterElementView } from "./MasterElementView"
 import type { EditorElement } from "@/types/editor"
 import { cn } from "@/lib/utils"
+
+// Attach `pointermove` + `pointerup` + `pointercancel` to `window` for
+// a drag operation. Returns a cleanup function that removes all three
+// listeners. `pointercancel` is needed because iOS Safari sends it
+// mid-drag (system gestures, notification banners, etc.) — without it
+// the global listeners persist and continue mutating state after the
+// user thinks the drag has ended. `blur` covers the Alt-Tab case on
+// desktop.
+function attachDragWindowListeners(
+  onMove: (e: PointerEvent) => void,
+  onUp: (e: PointerEvent) => void,
+): () => void {
+  window.addEventListener("pointermove", onMove)
+  window.addEventListener("pointerup", onUp)
+  window.addEventListener("pointercancel", onUp)
+  window.addEventListener("blur", onUp)
+  return () => {
+    window.removeEventListener("pointermove", onMove)
+    window.removeEventListener("pointerup", onUp)
+    window.removeEventListener("pointercancel", onUp)
+    window.removeEventListener("blur", onUp)
+  }
+}
 
 export function Canvas() {
   const {
@@ -21,6 +43,7 @@ export function Canvas() {
     masterElements,
     masterVisible,
     setSlideRawHtml,
+    setSlideSize,
     pushHistorySnapshot,
   } = useEditor()
   const slide = currentSlide()
@@ -76,12 +99,19 @@ export function Canvas() {
     if (e.currentTarget === e.target) setDragOver(false)
   }
 
-  // Convert client coords to canvas coords
+  // Convert client coords to canvas coords. The zoom divisor is
+  // `rect.width / slide.width` (not `rect.width / CANVAS_WIDTH`) so that
+  // non-default slide sizes (1920×1080, 1280×800, etc.) scale correctly.
+  // Using CANVAS_WIDTH here would silently mis-scale any slide whose
+  // `width !== 1280` — the cursor's canvas-space position would be off
+  // by `slide.width / 1280` and dropped/dragged elements would land in
+  // the wrong place.
   function clientToCanvas(clientX: number, clientY: number) {
     const canvas = document.getElementById("editor-canvas")
     if (!canvas) return { x: 0, y: 0 }
     const rect = canvas.getBoundingClientRect()
-    const z = rect.width / CANVAS_WIDTH
+    const slideW = slide?.width || CANVAS_WIDTH
+    const z = rect.width / slideW
     return { x: (clientX - rect.left) / z, y: (clientY - rect.top) / z }
   }
 
@@ -120,9 +150,13 @@ export function Canvas() {
       })
       window.removeEventListener("pointermove", onMove)
       window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onUp)
+      window.removeEventListener("blur", onUp)
     }
     window.addEventListener("pointermove", onMove)
     window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onUp)
+    window.addEventListener("blur", onUp)
   }
 
   // Render
@@ -249,6 +283,16 @@ export function Canvas() {
                 }}
                 onTextBlur={() => {
                   pushHistorySnapshot("Edit text", "Type")
+                }}
+                onSizeMeasured={(w, h) => {
+                  // Adopt the imported HTML's actual rendered size, not
+                  // just whatever the static detector (w-[NNNpx] / inline
+                  // width / data-width) happened to find. If the file
+                  // says nothing explicit (e.g. 100% / 100vw), the
+                  // browser renders it at the iframe's content width —
+                  // and that's what we measure here, so the editor
+                  // matches what the user sees in their own browser.
+                  setSlideSize(slide.id, w, h)
                 }}
                 onOverlaysUpdate={(items) => {
                   // Store overlay items as elements in the slide so they
@@ -427,7 +471,7 @@ export function Canvas() {
  * The iframe provides 100% visual fidelity; the overlays provide
  * precise element-level interaction — combining the best of both approaches.
  */
-function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onTextBlur, onOverlaysUpdate }: { 
+function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onTextBlur, onOverlaysUpdate, onSizeMeasured }: { 
   html: string
   zoom: number
   slideId: string
@@ -439,6 +483,12 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
   onTextChange: (html: string) => void
   onTextBlur?: () => void
   onOverlaysUpdate?: (items: { id: string; x: number; y: number; width: number; height: number; label: string; type: string; computedStyle?: { fontSize: number; fontFamily: string; fontWeight: string; fontStyle: string; textDecoration: string; color: string; textAlign: string; lineHeight: number; letterSpacing: number } }) => void
+  // Optional callback fired with the iframe body's actual rendered size
+  // after load. Lets the parent sync the slide.width/height to whatever
+  // the imported HTML is actually rendering at — so an HTML file opened
+  // directly in a browser at 1440×900 gets imported at 1440×900 even
+  // if the import-time static-detector missed the size.
+  onSizeMeasured?: (width: number, height: number) => void
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const lastHtml = useRef(html)
@@ -767,6 +817,25 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
       }
 
       setOverlays(finalItems)
+      // Notify parent of the iframe body's actual rendered size. This lets
+      // the editor adopt the same resolution the user sees when opening
+      // the file in a browser, even if the import-time static detector
+      // (Tailwind class match, inline style match) missed the size. We
+      // only fire when the measured size differs meaningfully from what
+      // the parent thinks the size is, to avoid an infinite re-render
+      // loop (setSlideSize → re-render → handleLoad → measure → setSlideSize).
+      if (onSizeMeasured) {
+        const measuredW = Math.round(bodyRect.width)
+        const measuredH = Math.round(bodyRect.height)
+        if (
+          Math.abs(measuredW - width) > 2 ||
+          Math.abs(measuredH - height) > 2
+        ) {
+          // Defer one tick so we're not calling setState during the
+          // document parsing we're inside of.
+          setTimeout(() => onSizeMeasured(measuredW, measuredH), 0)
+        }
+      }
       // Notify parent to store elements in the slide for Layers/PropertyPanel
       if (onOverlaysUpdate) {
         onOverlaysUpdate(finalItems.map(item => ({
@@ -940,6 +1009,8 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
     const onUp = () => {
       window.removeEventListener("pointermove", onMove)
       window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onUp)
+      window.removeEventListener("blur", onUp)
       setSnapLines([]) // Clear snap guide lines
       if (isDragging) {
         // Keep the transform as-is — it's already in canvas coordinates.
@@ -952,6 +1023,8 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
     }
     window.addEventListener("pointermove", onMove)
     window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onUp)
+    window.addEventListener("blur", onUp)
   }
 
   // Handle overlay double-click: edit text
@@ -976,22 +1049,35 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
     }
     // Enable iframe pointer events so text editing works
     setTextEditingId(item.id)
-    // Add blur listener to exit text editing mode
-    el.addEventListener("blur", () => {
-      // Remove contenteditable first
-      el.removeAttribute("contenteditable")
-      setTextEditingId(null)
-      // Now sync the changes to rawHtml
-      const iframe2 = iframeRef.current
-      if (!iframe2) return
-      const doc2 = (iframe2 as any)._sfDoc as Document
-      if (!doc2) return
-      // Capture the updated HTML (with new text)
-      const newHtml = "<!DOCTYPE html>\n" + doc2.documentElement.outerHTML
-      lastHtml.current = newHtml
-      onTextChange(newHtml)
-      if (onTextBlur) onTextBlur()
-    }, { once: true })
+    // Add blur listener to exit text editing mode. Guard against the
+    // double-bind case: if the user double-clicks the same overlay
+    // twice in a row (or the iframe's previous focus fires blur and
+    // we re-enter), `el` may be the same DOM node and the listener
+    // would fire twice. Without this guard, `onTextChange` is called
+    // twice → two history snapshots, two rawHtml writes.
+    if (!(el as any)._sfBlurBound) {
+      ;(el as any)._sfBlurBound = true
+      el.addEventListener(
+        "blur",
+        () => {
+          ;(el as any)._sfBlurBound = false
+          // Remove contenteditable first
+          el.removeAttribute("contenteditable")
+          setTextEditingId(null)
+          // Now sync the changes to rawHtml
+          const iframe2 = iframeRef.current
+          if (!iframe2) return
+          const doc2 = (iframe2 as any)._sfDoc as Document
+          if (!doc2) return
+          // Capture the updated HTML (with new text)
+          const newHtml = "<!DOCTYPE html>\n" + doc2.documentElement.outerHTML
+          lastHtml.current = newHtml
+          onTextChange(newHtml)
+          if (onTextBlur) onTextBlur()
+        },
+        { once: true },
+      )
+    }
   }
 
   // Handle resize handle drag
@@ -1061,12 +1147,16 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
     const onUp = () => {
       window.removeEventListener("pointermove", onMove)
       window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onUp)
+      window.removeEventListener("blur", onUp)
       // Keep transform — don't convert to absolute (avoids coordinate mismatch)
       syncChanges()
       if (onTextBlur) onTextBlur()
     }
     window.addEventListener("pointermove", onMove)
     window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onUp)
+    window.addEventListener("blur", onUp)
   }
 
   return (
