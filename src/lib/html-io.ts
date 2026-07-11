@@ -165,6 +165,18 @@ export function parseHtmlToRawSlides(html: string): Slide[] {
     // imported decks (e.g. tailwind-generated "ppt-slide" decks) rely on
     // their own responsive sizing. The canvas <iframe> sizes itself to
     // match the rendered slide (see slide/raw-mode iframe wrapper).
+    //
+    // CRITICAL: many carousel-style decks use a single CSS rule like
+    //   .slide { visibility: hidden; opacity: 0 }
+    //   .slide.active, .slide.visible { visibility: visible; opacity: 1 }
+    // to drive a single-screen presentation. When we extract ONE section
+    // into its own iframe, that section's class usually doesn't include
+    // "active" or "visible" (only slide 1 does, in the original doc), so
+    // the section renders as fully transparent and the iframe shows
+    // nothing — making slides 2-N look broken. We inject a scoped
+    // override that forces visibility on whichever element the author
+    // marked as a slide container. This is a no-op for slides that the
+    // author did mark as visible.
 
     // Clean the section HTML: remove layout-conflicting inline scripts
     // (scaleSlide / AutoFit helpers that adjust body height and overflow
@@ -172,6 +184,13 @@ export function parseHtmlToRawSlides(html: string): Slide[] {
     // the viewer but actively break the editor's iframe layout by setting
     // body.style.height, overflow: hidden, etc.
     const cleanedSectionHtml = cleanSlideScripts(sectionHtml)
+
+    // Classify the section so the override targets the right element. The
+    // slide's outermost tag may not be <section> — e.g. it could be a
+    // <div class="slide"> or <article data-slide>. Find the element
+    // matching the section so the override applies.
+    const sectionTag = section.tagName.toLowerCase()
+    const sectionClass = section.getAttribute("class") || ""
 
     const fullHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -184,6 +203,17 @@ ${styleBlocks}
 <style>
   html, body { margin: 0; padding: 0; background: ${escapeForCssValue(detectedBg)}; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Songti SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; }
   body { min-height: 100%; overflow: visible; }
+  /* Force the slide container visible regardless of author CSS that
+     gates it on .active / .visible / aria-hidden. The single-slide
+     iframe is always the "current" slide, so suppressing the visibility
+     here is safe. We match the actual element, not just .slide, so we
+     don't accidentally reveal OTHER .slide elements that might be
+     embedded in the same doc. */
+  ${sectionTag}${sectionClass ? "." + sectionClass.split(/\s+/).filter(Boolean).join(".") : ""} {
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
 </style>
 </head>
 <body>

@@ -154,15 +154,25 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                   <div
                     className="absolute inset-0 origin-top-left pointer-events-none"
                     style={{
-                      width: CANVAS_WIDTH,
-                      height: CANVAS_HEIGHT,
-                      transform: `scale(${96 / CANVAS_WIDTH})`,
+                      // Match the slide's actual size so a 1920×1080 deck
+                      // isn't clipped at 1280×720. The transform scales
+                      // the rendered content down to the 96px-wide panel
+                      // regardless of source size.
+                      width: slide.width || CANVAS_WIDTH,
+                      height: slide.height || CANVAS_HEIGHT,
+                      transform: `scale(${96 / (slide.width || CANVAS_WIDTH)})`,
                     }}
                   >
                     {slide.rawHtml ? (
                       <iframe
                         className="absolute top-0 left-0 border-none"
-                        style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, pointerEvents: "none" }}
+                        // Use the slide's actual width/height (falling back
+                        // to the default 1280×720) so the thumbnail's
+                        // content isn't clipped when the imported deck
+                        // declares a different size (1920×1080 etc.).
+                        // The transform on the wrapper scales the result
+                        // back down to the panel size.
+                        style={{ width: slide.width || CANVAS_WIDTH, height: slide.height || CANVAS_HEIGHT, pointerEvents: "none" }}
                         srcDoc={slide.rawHtml}
                         sandbox="allow-same-origin allow-scripts"
                         title={`Slide ${idx + 1} preview`}
