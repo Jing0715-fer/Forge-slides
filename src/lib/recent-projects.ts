@@ -4,6 +4,18 @@ import { idbSaveProject, idbLoadProject, idbDeleteProject, isIndexedDBAvailable,
 const RECENT_KEY = "slideforge:recent-projects:v2"
 const MAX_RECENT = 12
 
+// Monotonic counter + 6-char random suffix → collisions vanishingly
+// unlikely even when the user imports multiple projects in the same
+// millisecond. Previously used `Date.now()` alone, which collided
+// when imports happened in the same tick and silently merged projects
+// in IndexedDB (so opening any "recent" loaded whichever had the
+// most recent put()).
+let __recentIdCounter = 0
+function generateRecentId(): string {
+  __recentIdCounter += 1
+  return `proj-${Date.now().toString(36)}-${__recentIdCounter.toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 export interface RecentProject {
   id: string
   name: string
@@ -26,7 +38,29 @@ export function getRecentProjects(): RecentProject[] {
     const raw = localStorage.getItem(RECENT_KEY)
     if (raw) {
       const data = JSON.parse(raw) as RecentProject[]
-      if (Array.isArray(data)) return data.sort((a, b) => b.savedAt - a.savedAt)
+      if (Array.isArray(data)) {
+        const sorted = data.sort((a, b) => b.savedAt - a.savedAt)
+        // Defensive: dedupe by id. Older data created with the
+        // `Date.now()`-only id generator can have multiple recent entries
+        // that share an id (collided when imported in the same ms). When
+        // that happens, IndexedDB only has the most recent put() under
+        // that key, so opening ANY of the duplicated entries would load
+        // the same project. Reassigning fresh ids here at load time
+        // preserves the visible entry (so the user still sees both rows
+        // in the list) but marks the duplicates as hasFullData: false —
+        // the user can re-import to recover the actual slide data.
+        const seen = new Set<string>()
+        const deduped: RecentProject[] = []
+        for (const p of sorted) {
+          if (seen.has(p.id)) {
+            deduped.push({ ...p, id: generateRecentId(), hasFullData: false })
+          } else {
+            seen.add(p.id)
+            deduped.push(p)
+          }
+        }
+        return deduped
+      }
     }
     // Try v1 format (legacy — full slides in localStorage)
     const v1Raw = localStorage.getItem("slideforge:recent-projects:v1")
@@ -61,11 +95,11 @@ export function getRecentProjects(): RecentProject[] {
 
 export async function saveRecentProject(project: Omit<RecentProject, "id" | "savedAt" | "hasFullData"> & { id?: string }): Promise<RecentProject> {
   if (typeof window === "undefined") {
-    return { ...project, id: project.id || `proj-${Date.now()}`, savedAt: Date.now(), hasFullData: false } as RecentProject
+    return { ...project, id: project.id || generateRecentId(), savedAt: Date.now(), hasFullData: false } as RecentProject
   }
 
   const existing = getRecentProjects()
-  const id = project.id || `proj-${Date.now()}`
+  const id = project.id || generateRecentId()
   const entry: RecentProject = {
     ...project,
     id,
