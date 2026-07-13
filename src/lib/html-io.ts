@@ -157,7 +157,7 @@ export function parseHtmlToRawSlides(html: string): Slide[] {
     // similar decks frequently exceed the 16:9 1280×720 canvas (e.g. dense
     // layouts at 1280×900, 1280×1200). When the imported slide declares a
     // larger size we propagate it so the canvas does not clip the body.
-    const slideSize = detectSlideSize(section)
+    const slideSize = detectSlideSize(section, doc)
 
     // Build a complete, self-contained HTML document for the iframe.
     // The wrapper is intentionally light: it sets the chrome (margins, font
@@ -203,16 +203,40 @@ ${styleBlocks}
 <style>
   html, body { margin: 0; padding: 0; background: ${escapeForCssValue(detectedBg)}; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Songti SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; }
   body { min-height: 100%; overflow: visible; }
-  /* Force the slide container visible regardless of author CSS that
-     gates it on .active / .visible / aria-hidden. The single-slide
-     iframe is always the "current" slide, so suppressing the visibility
-     here is safe. We match the actual element, not just .slide, so we
-     don't accidentally reveal OTHER .slide elements that might be
-     embedded in the same doc. */
+  /* Force the slide section visible + displayed.
+     Only override display:none on the SECTION — don't touch children's
+     display values (they may use flex/grid/absolute for layout). */
   ${sectionTag}${sectionClass ? "." + sectionClass.split(/\s+/).filter(Boolean).join(".") : ""} {
     visibility: visible !important;
     opacity: 1 !important;
     pointer-events: auto !important;
+    display: block !important;
+  }
+  /* Force reveal/animation-gated elements visible — opacity + transform only.
+     Do NOT override display here (would break flex/grid layout). */
+  .reveal, .bar, .animate-in, [data-animate], .step,
+  .fade-in, .slide-up, .slide-down, .slide-left, .slide-right,
+  .zoom-in, .bounce-in, .flip-in, .roll-in, .rotate-in,
+  .aos-init, .aos-animate, [data-aos],
+  .scroll-animate, .scroll-reveal, .scroll-fade,
+  .stagger, .stagger-in,
+  .anim, .animated, .animation,
+  [data-scroll], [data-animation],
+  .page-content, .slide-content {
+    opacity: 1 !important;
+    transform: none !important;
+    visibility: visible !important;
+    clip-path: none !important;
+    filter: none !important;
+  }
+  /* Force visibility on ALL descendants — but ONLY visibility, NOT display.
+     This catches visibility:hidden without breaking layout. */
+  ${sectionTag}, ${sectionTag} * {
+    visibility: visible !important;
+  }
+  /* Keep utility elements hidden */
+  .skip-link, .deck-controls, [aria-hidden="true"] {
+    display: none !important;
   }
 </style>
 </head>
@@ -243,7 +267,7 @@ ${cleanedSectionHtml}
  *  - height: explicit Tailwind class `h-[NNNpx]` (markers in Z.ai decks),
  *    inline height style, or a high min-height. Falls back to 720.
  */
-function detectSlideSize(el: Element): { width: number; height: number } {
+function detectSlideSize(el: Element, doc?: Document): { width: number; height: number } {
   const out = { width: 1280, height: 720 }
   const dw = el.getAttribute("data-width")
   const dh = el.getAttribute("data-height")
@@ -265,6 +289,67 @@ function detectSlideSize(el: Element): { width: number; height: number } {
   if (wStyle) out.width = parseInt(wStyle[1], 10)
   const hStyle = inline.match(/\bheight\s*:\s*(\d+)px/i)
   if (hStyle) out.height = parseInt(hStyle[1], 10)
+
+  // Step 4: scan <style> blocks for rules targeting common slide/stage
+  // selectors. Many AI-generated decks (e.g. the attached test file)
+  // define the stage size in a stylesheet, not inline on the element —
+  // e.g. `.deck-stage { width: 1920px; height: 1080px }` in a <style>
+  // block. Without this step the slide falls back to 1280×720 and clips
+  // all content.
+  if (doc) {
+    const fromCss = detectSlideSizeFromStyles(doc)
+    if (fromCss.width > out.width) out.width = fromCss.width
+    if (fromCss.height > out.height) out.height = fromCss.height
+  }
+  return out
+}
+
+/**
+ * Scan all <style> blocks in the document for CSS rules that set an
+ * explicit pixel width/height on common slide-stage selectors. Returns
+ * the largest width/height found (so a 1920×1080 declaration wins over
+ * the 1280×720 default).
+ *
+ * Selectors considered: .deck-stage, .slide-stage, .slide-container,
+ * .slide-page, .ppt-slide, .pptx-slide, .deck-slide, .slide
+ *
+ * We deliberately do NOT use a full CSS parser — the corpus is small
+ * and predictable, and a regex over
+ *   <selector> { ... width: NNNpx ... height: NNNpx ... }
+ * is robust enough for AI-generated decks.
+ */
+function detectSlideSizeFromStyles(doc: Document): { width: number; height: number } {
+  const out = { width: 0, height: 0 }
+  const selectors = [
+    ".deck-stage", ".slide-stage", ".slide-container", ".slide-page",
+    ".ppt-slide", ".pptx-slide", ".deck-slide", ".slide",
+  ]
+  // Build one combined alternation. Escape dots for regex.
+  const selRe = selectors.map((s) => s.replace(/\./g, "\\.")).join("|")
+  const styleEls = Array.from(doc.querySelectorAll("style"))
+  for (const styleEl of styleEls) {
+    const text = styleEl.textContent || ""
+    // Match: <selector> { ... width: 1920px ... height: 1080px ... }
+    // The rule block may span multiple lines.
+    const ruleRe = new RegExp(
+      "(?:" + selRe + ")\\s*\\{([^}]*)\\}",
+      "gi",
+    )
+    let m: RegExpExecArray | null
+    while ((m = ruleRe.exec(text)) !== null) {
+      const block = m[1]
+      const wMatch = block.match(/\bwidth\s*:\s*(\d+)\s*px/i)
+      const hMatch = block.match(/\bheight\s*:\s*(\d+)\s*px/i)
+      if (wMatch) {
+        const w = parseInt(wMatch[1], 10)
+        if (!isNaN(w) && w > out.width) out.width = w
+      }
+      if (hMatch) {
+        const h = parseInt(hMatch[1], 10)
+        if (!isNaN(h) && h > out.height) out.height = h
+      }
+    }
+  }
   return out
 }
 

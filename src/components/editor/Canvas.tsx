@@ -624,8 +624,14 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
             return
           }
 
-          // Skip elements outside the slide
-          if (rect.right < 0 || rect.bottom < 0 || rect.left > 1280 || rect.top > 720) {
+          // Skip elements outside the slide. Use the ACTUAL slide
+          // dimensions (the `width`/`height` props), not hardcoded
+          // 1280×720 — otherwise every element positioned beyond
+          // 1280×720 in a 1920×1080 deck is filtered out and no click
+          // overlay is created for it. That was the root cause of "can
+          // only select the background, other elements are unclickable"
+          // on high-resolution imported decks.
+          if (rect.right < 0 || rect.bottom < 0 || rect.left > width || rect.top > height) {
             scanElements(child, depth + 1)
             return
           }
@@ -825,8 +831,29 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
       // the parent thinks the size is, to avoid an infinite re-render
       // loop (setSlideSize → re-render → handleLoad → measure → setSlideSize).
       if (onSizeMeasured) {
-        const measuredW = Math.round(bodyRect.width)
-        const measuredH = Math.round(bodyRect.height)
+        // bodyRect reflects the iframe's body size, which is 100% of the
+        // iframe element — i.e. whatever width/height we already set. That's
+        // useless when the CONTENT (e.g. .deck-stage at 1920×1080) overflows
+        // a 1280×720 iframe. Use scrollWidth/scrollHeight instead, which
+        // report the actual rendered content extent (including overflow).
+        // Also scan the first slide/stage element as a fallback for decks
+        // whose body doesn't grow to fit content.
+        let measuredW = Math.max(doc.body.scrollWidth, Math.round(bodyRect.width))
+        let measuredH = Math.max(doc.body.scrollHeight, Math.round(bodyRect.height))
+        const stageSel = [".deck-stage", ".slide-stage", ".slide", ".ppt-slide", ".pptx-slide"]
+        for (const sel of stageSel) {
+          const stageEl = doc.querySelector(sel) as HTMLElement | null
+          if (stageEl) {
+            const r = stageEl.getBoundingClientRect()
+            if (r.width > measuredW) measuredW = Math.round(r.width)
+            if (r.height > measuredH) measuredH = Math.round(r.height)
+            break
+          }
+        }
+        // Clamp to a sane minimum so a stray empty body doesn't collapse
+        // the canvas to 0×0.
+        measuredW = Math.max(measuredW, 1280)
+        measuredH = Math.max(measuredH, 720)
         if (
           Math.abs(measuredW - width) > 2 ||
           Math.abs(measuredH - height) > 2
