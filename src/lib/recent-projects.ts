@@ -1,20 +1,11 @@
 import type { Slide, EditorElement } from "@/types/editor"
 import { idbSaveProject, idbLoadProject, idbDeleteProject, isIndexedDBAvailable, type StoredProject } from "./indexed-db"
+import { patchSlideRawHtml } from "./slide-patch"
+
+export { patchSlideRawHtml } from "./slide-patch"
 
 const RECENT_KEY = "slideforge:recent-projects:v2"
 const MAX_RECENT = 12
-
-// Monotonic counter + 6-char random suffix → collisions vanishingly
-// unlikely even when the user imports multiple projects in the same
-// millisecond. Previously used `Date.now()` alone, which collided
-// when imports happened in the same tick and silently merged projects
-// in IndexedDB (so opening any "recent" loaded whichever had the
-// most recent put()).
-let __recentIdCounter = 0
-function generateRecentId(): string {
-  __recentIdCounter += 1
-  return `proj-${Date.now().toString(36)}-${__recentIdCounter.toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
 
 export interface RecentProject {
   id: string
@@ -38,29 +29,7 @@ export function getRecentProjects(): RecentProject[] {
     const raw = localStorage.getItem(RECENT_KEY)
     if (raw) {
       const data = JSON.parse(raw) as RecentProject[]
-      if (Array.isArray(data)) {
-        const sorted = data.sort((a, b) => b.savedAt - a.savedAt)
-        // Defensive: dedupe by id. Older data created with the
-        // `Date.now()`-only id generator can have multiple recent entries
-        // that share an id (collided when imported in the same ms). When
-        // that happens, IndexedDB only has the most recent put() under
-        // that key, so opening ANY of the duplicated entries would load
-        // the same project. Reassigning fresh ids here at load time
-        // preserves the visible entry (so the user still sees both rows
-        // in the list) but marks the duplicates as hasFullData: false —
-        // the user can re-import to recover the actual slide data.
-        const seen = new Set<string>()
-        const deduped: RecentProject[] = []
-        for (const p of sorted) {
-          if (seen.has(p.id)) {
-            deduped.push({ ...p, id: generateRecentId(), hasFullData: false })
-          } else {
-            seen.add(p.id)
-            deduped.push(p)
-          }
-        }
-        return deduped
-      }
+      if (Array.isArray(data)) return data.sort((a, b) => b.savedAt - a.savedAt)
     }
     // Try v1 format (legacy — full slides in localStorage)
     const v1Raw = localStorage.getItem("slideforge:recent-projects:v1")
@@ -95,11 +64,11 @@ export function getRecentProjects(): RecentProject[] {
 
 export async function saveRecentProject(project: Omit<RecentProject, "id" | "savedAt" | "hasFullData"> & { id?: string }): Promise<RecentProject> {
   if (typeof window === "undefined") {
-    return { ...project, id: project.id || generateRecentId(), savedAt: Date.now(), hasFullData: false } as RecentProject
+    return { ...project, id: project.id || `proj-${Date.now()}`, savedAt: Date.now(), hasFullData: false } as RecentProject
   }
 
   const existing = getRecentProjects()
-  const id = project.id || generateRecentId()
+  const id = project.id || `proj-${Date.now()}`
   const entry: RecentProject = {
     ...project,
     id,
@@ -182,7 +151,11 @@ export async function loadRecentProjectData(id: string): Promise<{ slides: Slide
   const stored = await idbLoadProject(id)
   if (!stored || !stored.slides || stored.slides.length === 0) return null
   return {
-    slides: stored.slides as Slide[],
+    // Patch any rawHtml that was saved before the .reveal CSS override fix.
+    // Old projects (pre-Phase 11) have rawHtml without the reveal override,
+    // causing slides 2+ to show only background (text invisible). This
+    // auto-patches them on load so users don't need to re-import.
+    slides: (stored.slides as Slide[]).map(patchSlideRawHtml),
     masterElements: (stored.masterElements || []) as EditorElement[],
   }
 }
@@ -191,12 +164,23 @@ export function generateSlideThumbnail(slides: Slide[]): string | undefined {
   if (typeof document === "undefined" || slides.length === 0) return undefined
   try {
     const slide = slides[0]
+    // Use the slide's ACTUAL authored dimensions (e.g. 1920×1080 for high-res
+    // imported decks) instead of a hardcoded 1280×720. This keeps the aspect
+    // ratio correct and prevents content from being squished into the wrong
+    // shape in the Recent Projects panel on the landing page.
+    const slideW = slide.width || 1280
+    const slideH = slide.height || 720
+    // Thumbnail canvas dimensions — keep the slide's aspect ratio so 16:9,
+    // 16:10, 4:3 decks all render proportionally.
+    const thumbW = 320
+    const thumbH = Math.round((thumbW * slideH) / slideW)
     const canvas = document.createElement("canvas")
-    canvas.width = 320
-    canvas.height = 180
+    canvas.width = thumbW
+    canvas.height = thumbH
     const ctx = canvas.getContext("2d")
     if (!ctx) return undefined
 
+    // Background — respect the slide's detected background.
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     if (slide.background && slide.background.includes("gradient")) {
@@ -207,14 +191,18 @@ export function generateSlideThumbnail(slides: Slide[]): string | undefined {
       ctx.fillRect(0, 0, canvas.width, canvas.height)
     }
 
-    const scaleX = canvas.width / 1280
-    const scaleY = canvas.height / 720
+    const scaleX = canvas.width / slideW
+    const scaleY = canvas.height / slideH
     const elements = slide.elements.slice().sort((a, b) => a.zIndex - b.zIndex)
     for (const el of elements) {
+      // Skip invisible / locked-from-render elements
+      if (el.visible === false) continue
       const x = el.x * scaleX
       const y = el.y * scaleY
       const w = el.width * scaleX
       const h = el.height * scaleY
+      // Apply opacity for a more faithful preview
+      ctx.globalAlpha = el.opacity != null ? el.opacity : 1
       if (el.fill && el.fill !== "transparent") {
         ctx.fillStyle = el.fill
         ctx.fillRect(x, y, w, h)
@@ -226,6 +214,7 @@ export function generateSlideThumbnail(slides: Slide[]): string | undefined {
         ctx.textBaseline = "top"
         ctx.fillText((t.text || "").slice(0, 30), x + 2, y + 2, w - 4)
       }
+      ctx.globalAlpha = 1
     }
 
     return canvas.toDataURL("image/jpeg", 0.6)

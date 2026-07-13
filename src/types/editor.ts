@@ -33,7 +33,87 @@ export interface BaseElement {
   shadowBlur?: number
   shadowX?: number
   shadowY?: number
+  // PPT-style entrance animation. The animation plays once when the slide
+  // is shown in presentation mode (and when "Preview Animation" is clicked
+  // in the editor). `entrance` selects the effect; `entranceDuration` and
+  // `entranceDelay` control timing (ms).
+  entrance?: EntranceAnimation
+  entranceDuration?: number // ms, default 600
+  entranceDelay?: number    // ms, default 0
+  // PPT-style exit animation. Plays when leaving the slide in presentation
+  // mode (before the next slide's entrance animations begin).
+  exit?: ExitAnimation
+  exitDuration?: number // ms, default 600
+  exitDelay?: number    // ms, default 0
+  // PPT-style emphasis animation. Loops continuously while the slide is
+  // visible in presentation mode (unlike entrance/exit which play once).
+  // Useful for drawing attention to an element (pulsing call-to-action,
+  // spinning loader icon, wobbling badge, etc.).
+  emphasis?: EmphasisAnimation
+  emphasisDuration?: number // ms per loop, default 1000
+  // Animation trigger — when the entrance animation plays in presentation mode.
+  //   "with-slide" — plays automatically when the slide loads (default)
+  //   "with-previous" — plays at the same time as the previous element's animation
+  //   "on-click" — plays when the user clicks/advances (space/arrow) in presentation
+  animationTrigger?: AnimationTrigger
 }
+
+/**
+ * Animation trigger types (PowerPoint-style "Start" options).
+ * - "with-slide": animation starts automatically when the slide loads (default)
+ * - "with-previous": animation starts at the same time as the previous element
+ * - "on-click": animation starts when the user clicks to advance
+ */
+export type AnimationTrigger = "with-slide" | "with-previous" | "on-click"
+
+/**
+ * Emphasis animation types — loop continuously while the slide is visible.
+ * - "none": no emphasis (default)
+ * - "pulse": scale 1 → 1.05 → 1 (subtle attention draw)
+ * - "spin-continuous": rotate 0 → 360 forever (loader/spinner)
+ * - "wiggle": small rotation oscillation ±5° (playful)
+ * - "bounce-continuous": translateY 0 → -8 → 0 (floating)
+ * - "glow": opacity + box-shadow pulse (highlight)
+ * - "shake": horizontal jitter (error/alert)
+ * - "flash": opacity 1 → 0.3 → 1 (blink)
+ */
+export type EmphasisAnimation =
+  | "none"
+  | "pulse"
+  | "spin-continuous"
+  | "wiggle"
+  | "bounce-continuous"
+  | "glow"
+  | "shake"
+  | "flash"
+
+/**
+ * Entrance animation types (PowerPoint-style).
+ * - "none": no animation (default)
+ * - "fade": opacity 0 → 1
+ * - "slide-up" / "slide-down" / "slide-left" / "slide-right": translate + fade
+ * - "zoom": scale 0.6 → 1 + fade
+ * - "bounce": translateY with overshoot
+ * - "spin": rotate 0 → 360 + fade (playful)
+ */
+export type EntranceAnimation =
+  | "none"
+  | "fade"
+  | "slide-up"
+  | "slide-down"
+  | "slide-left"
+  | "slide-right"
+  | "zoom"
+  | "bounce"
+  | "spin"
+
+/**
+ * Exit animation types — mirror entrance but reversed (element goes FROM
+ * its natural state TO hidden). Plays when leaving a slide in presentation
+ * mode. Same type values as EntranceAnimation for consistency; the CSS
+ * keyframes are reversed.
+ */
+export type ExitAnimation = EntranceAnimation
 
 export interface TextElement extends BaseElement {
   type: "text"
@@ -107,6 +187,14 @@ export interface Slide {
   // full content without clipping.
   width?: number
   height?: number
+  // Ordered list of element IDs that have entrance animations. The order
+  // determines the sequence in which animations play during presentation
+  // (when "sequential" playback is selected in the timeline pane).
+  animationOrder?: string[]
+  // Playback mode for entrance animations on this slide.
+  //   "sequential" — elements animate one after another (in animationOrder)
+  //   "together"   — all elements animate at once
+  animationPlayback?: "sequential" | "together"
 }
 
 // Alignment guide lines shown while dragging / resizing

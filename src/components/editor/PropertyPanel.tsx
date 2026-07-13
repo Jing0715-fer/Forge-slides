@@ -14,11 +14,14 @@ import { Toggle } from "@/components/ui/toggle"
 import { ColorSwatchPicker } from "./ColorSwatchPicker"
 import { GradientPicker } from "./GradientPicker"
 import { SpeakerNotesPanel } from "./SpeakerNotesPanel"
+import { AnimationPane } from "./AnimationPane"
+import { AnimationTimeline } from "./AnimationTimeline"
+import { AnimationPresets } from "./AnimationPresets"
 import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   ArrowUpToLine, ArrowDownToLine, Lock, Unlock, Eye, EyeOff,
-  Maximize2,
+  Maximize2, Sparkles,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -210,6 +213,54 @@ function ExactModePanel({ slide }: { slide: Slide }) {
         </p>
         <SlideSizeControl key={slide.id} slide={slide} />
       </div>
+      <TransitionControl slide={slide} />
+      <AnimationPresets />
+      <AnimationTimeline />
+    </div>
+  )
+}
+
+/** Reusable transition picker — shown in both ExactMode and Empty panels. */
+function TransitionControl({ slide }: { slide: Slide }) {
+  const { setSlideTransition } = useEditor()
+  const transitions = [
+    { value: "inherit", label: "Inherit", icon: "↩" },
+    { value: "none", label: "None", icon: "✕" },
+    { value: "fade", label: "Fade", icon: "◐" },
+    { value: "slide", label: "Slide", icon: "→" },
+    { value: "zoom", label: "Zoom", icon: "⊕" },
+  ] as const
+  return (
+    <div className="p-4 border-b">
+      <h4 className="text-xs font-semibold mb-2 text-muted-foreground flex items-center gap-1.5">
+        <Sparkles className="w-3 h-3 text-amber-500" />
+        TRANSITION
+      </h4>
+      <p className="text-[10px] text-muted-foreground mb-2">
+        How this slide enters during presentation. &quot;Inherit&quot; uses the
+        global default.
+      </p>
+      <div className="grid grid-cols-5 gap-1">
+        {transitions.map(t => {
+          const active = (slide.transition || "inherit") === t.value
+          return (
+            <button
+              key={t.value}
+              onClick={() => setSlideTransition(slide.id, t.value)}
+              className={
+                "flex flex-col items-center gap-0.5 py-1.5 rounded border text-[10px] font-medium transition-all " +
+                (active
+                  ? "border-primary bg-primary/10 text-primary shadow-sm"
+                  : "border-border hover:border-muted-foreground/40 hover:bg-muted/50 text-muted-foreground")
+              }
+              title={t.label}
+            >
+              <span className="text-sm leading-none">{t.icon}</span>
+              <span className="leading-none">{t.label}</span>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -239,6 +290,9 @@ function EmptyPanel() {
         </p>
         <SlideSizeControl key={slide.id} slide={slide} />
       </div>
+      <TransitionControl slide={slide} />
+      <AnimationPresets />
+      <AnimationTimeline />
       <div className="p-4 text-sm text-muted-foreground">
         <p className="mb-2 font-medium text-foreground">Tips</p>
         <ul className="space-y-1.5 text-xs">
@@ -467,6 +521,23 @@ function SingleElementPanel({
           </Button>
         </div>
       </Section>
+
+      {/* Entrance animation — PPT-style. Only for non-overlay (native)
+          elements; Exact-mode overlay elements don't support entrance
+          animations because they live inside the iframe. */}
+      {!element.id.startsWith("sf-") && (
+        <AnimationPane element={element} />
+      )}
+
+      {/* Animation timeline — shows all animated elements on this slide.
+          Only for native (non-Exact) slides where elements support entrance
+          animations. */}
+      {!element.id.startsWith("sf-") && (
+        <AnimationPresets />
+      )}
+      {!element.id.startsWith("sf-") && (
+        <AnimationTimeline />
+      )}
     </div>
   )
 }

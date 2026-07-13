@@ -1,11 +1,12 @@
 "use client"
 
 import React, { useState, useRef } from "react"
-import { useEditor, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/store/editor-store"
+import { useEditor } from "@/store/editor-store"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Plus, Copy, Trash2, LayoutTemplate, GripVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { LazyThumbnail } from "./LazyThumbnail"
 
 interface SlidesPanelProps {
   onNewFromTemplate?: () => void
@@ -150,82 +151,10 @@ export function SlidesPanel({ onNewFromTemplate }: SlidesPanelProps) {
                   >
                     <GripVertical className="w-2.5 h-2.5" />
                   </div>
-                  {/* Mini preview */}
-                  <div
-                    className="absolute inset-0 origin-top-left pointer-events-none"
-                    style={{
-                      // Match the slide's actual size so a 1920×1080 deck
-                      // isn't clipped at 1280×720. The transform scales
-                      // the rendered content down to the 96px-wide panel
-                      // regardless of source size.
-                      width: slide.width || CANVAS_WIDTH,
-                      height: slide.height || CANVAS_HEIGHT,
-                      transform: `scale(${96 / (slide.width || CANVAS_WIDTH)})`,
-                    }}
-                  >
-                    {slide.rawHtml ? (
-                      <iframe
-                        className="absolute top-0 left-0 border-none"
-                        // Use the slide's actual width/height (falling back
-                        // to the default 1280×720) so the thumbnail's
-                        // content isn't clipped when the imported deck
-                        // declares a different size (1920×1080 etc.).
-                        // The transform on the wrapper scales the result
-                        // back down to the panel size.
-                        style={{ width: slide.width || CANVAS_WIDTH, height: slide.height || CANVAS_HEIGHT, pointerEvents: "none" }}
-                        srcDoc={slide.rawHtml}
-                        sandbox="allow-same-origin allow-scripts"
-                        title={`Slide ${idx + 1} preview`}
-                      />
-                    ) : (() => {
-                      // Dedupe by id before rendering — defensive against
-                      // legacy project data with colliding ids.
-                      const seen = new Set<string>()
-                      return slide.elements
-                        .slice()
-                        .sort((a, b) => a.zIndex - b.zIndex)
-                        .filter((e) => {
-                          if (seen.has(e.id)) return false
-                          seen.add(e.id)
-                          return true
-                        })
-                        .map((el) => (
-                      <div
-                        key={el.id}
-                        className="absolute"
-                        style={{
-                          left: el.x,
-                          top: el.y,
-                          width: el.width,
-                          height: el.height,
-                          background: el.fill && el.fill !== "transparent" ? el.fill : undefined,
-                          borderRadius: el.borderRadius,
-                          opacity: el.opacity,
-                          transform: `rotate(${el.rotation}deg)`,
-                          border: el.strokeWidth && el.stroke ? `${el.strokeWidth}px solid ${el.stroke}` : undefined,
-                        }}
-                      >
-                        {el.type === "text" && (
-                          <div
-                            style={{
-                              fontSize: (el as any).fontSize,
-                              color: (el as any).color,
-                              fontWeight: (el as any).fontWeight,
-                              width: "100%",
-                              height: "100%",
-                              overflow: "hidden",
-                            }}
-                          >
-                            {(el as any).text?.slice(0, 30)}
-                          </div>
-                        )}
-                        {el.type === "image" && (el as any).src && (el as any).src.trim() && (
-                          <img src={(el as any).src} alt="" className="w-full h-full" style={{ objectFit: (el as any).objectFit }} />
-                        )}
-                      </div>
-                        ))
-                    })()}
-                  </div>
+                  {/* Mini preview — lazy-loaded (iframe mounts only when
+                      the thumbnail scrolls into view, cutting initial
+                      render cost for large decks). */}
+                  <LazyThumbnail slide={slide} index={idx} panelWidth={96} />
                   {/* Slide number */}
                   <div className="absolute top-1 left-1 text-[10px] font-mono font-medium bg-black/50 backdrop-blur-sm text-white rounded px-1.5 py-0.5">
                     {idx + 1}

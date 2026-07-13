@@ -19,6 +19,9 @@ import { SaveTemplateDialog } from "./SaveTemplateDialog"
 import { TemplateManagerDialog } from "./TemplateManagerDialog"
 import { AiGenerateDialog } from "./AiGenerateDialog"
 import { AiHistoryDialog } from "./AiHistoryDialog"
+import { SlideSorter } from "./SlideSorter"
+import { BatchPngExportDialog } from "./BatchPngExportDialog"
+import { MasterSlideEditor } from "./MasterSlideEditor"
 import { Toaster } from "@/components/ui/sonner"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -46,6 +49,9 @@ export function Editor({ initialImportOpen, initialAiGenerateOpen, onExit, skipR
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false)
   const [aiGenerateOpen, setAiGenerateOpen] = useState(false)
   const [aiHistoryOpen, setAiHistoryOpen] = useState(false)
+  const [sorterOpen, setSorterOpen] = useState(false)
+  const [batchPngOpen, setBatchPngOpen] = useState(false)
+  const [masterEditorOpen, setMasterEditorOpen] = useState(false)
 
   // Open import dialog if requested from landing page
   const [prevInitialImport, setPrevInitialImport] = useState(false)
@@ -66,6 +72,7 @@ export function Editor({ initialImportOpen, initialAiGenerateOpen, onExit, skipR
     undo, redo, updateElements, currentSlide, slides, alignElements,
     distributeElements, matchSize, groupElements, ungroupElements,
     copyFormat, pasteFormat, formatClipboard,
+    copyElementAnimation, pasteElementAnimation, animationClipboard,
   } = useEditor()
 
   const { lastSaved, pending, restoreData, acceptRestore, dismissRestore } = useAutosave()
@@ -142,6 +149,20 @@ export function Editor({ initialImportOpen, initialAiGenerateOpen, onExit, skipR
         toast.success(`Format applied to ${selectedIds.length} element${selectedIds.length === 1 ? "" : "s"}`)
         return
       }
+      // Animation painter: Alt+Shift+C = copy animation, Alt+Shift+V = paste animation
+      // (avoids clashing with Ctrl+Shift+C/V which is format painter)
+      if (e.altKey && e.shiftKey && (e.key === "C" || e.key === "c") && selectedIds.length === 1) {
+        e.preventDefault()
+        copyElementAnimation(selectedIds[0])
+        toast.success("Animation copied — select another element and press Alt+Shift+V")
+        return
+      }
+      if (e.altKey && e.shiftKey && (e.key === "V" || e.key === "v") && animationClipboard && selectedIds.length > 0) {
+        e.preventDefault()
+        pasteElementAnimation(selectedIds)
+        toast.success(`Animation applied to ${selectedIds.length} element${selectedIds.length === 1 ? "" : "s"}`)
+        return
+      }
       if (meta && e.key === "d" && selectedIds.length > 0) {
         e.preventDefault()
         duplicateElements(selectedIds)
@@ -200,6 +221,13 @@ export function Editor({ initialImportOpen, initialAiGenerateOpen, onExit, skipR
       if (meta && e.key === "f") {
         e.preventDefault()
         setFindReplaceOpen(true)
+        return
+      }
+
+      // Slide Sorter — Ctrl+Shift+S (avoids clash with Ctrl+S save)
+      if (meta && e.shiftKey && e.key === "S") {
+        e.preventDefault()
+        setSorterOpen(true)
         return
       }
 
@@ -312,11 +340,14 @@ export function Editor({ initialImportOpen, initialAiGenerateOpen, onExit, skipR
         onShowShortcuts={() => setShortcutsOpen(true)}
         onFindReplace={() => setFindReplaceOpen(true)}
         onPngExport={handlePngExport}
+        onBatchPngExport={() => setBatchPngOpen(true)}
         onPresent={() => setPresentationOpen(true)}
         onSaveTemplate={() => setSaveTemplateOpen(true)}
         onOpenTemplates={() => setTemplateManagerOpen(true)}
         onAiGenerate={() => setAiGenerateOpen(true)}
         onAiHistory={() => setAiHistoryOpen(true)}
+        onOpenSorter={() => setSorterOpen(true)}
+        onOpenMasterEditor={() => setMasterEditorOpen(true)}
       />
       {restoreData && !skipRestoreBanner && (
         <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b border-primary/20 px-4 py-2.5 flex items-center gap-3 text-sm">
@@ -351,6 +382,9 @@ export function Editor({ initialImportOpen, initialAiGenerateOpen, onExit, skipR
       <FindReplaceDialog open={findReplaceOpen} onOpenChange={setFindReplaceOpen} />
       <TemplatePickerDialog open={templateOpen} onOpenChange={setTemplateOpen} />
       <PresentationMode open={presentationOpen} onOpenChange={setPresentationOpen} />
+      <SlideSorter open={sorterOpen} onOpenChange={setSorterOpen} />
+      <BatchPngExportDialog open={batchPngOpen} onOpenChange={setBatchPngOpen} />
+      <MasterSlideEditor open={masterEditorOpen} onOpenChange={setMasterEditorOpen} />
       <SaveTemplateDialog open={saveTemplateOpen} onOpenChange={setSaveTemplateOpen} />
       <TemplateManagerDialog open={templateManagerOpen} onOpenChange={setTemplateManagerOpen} />
       <AiGenerateDialog open={aiGenerateOpen} onOpenChange={setAiGenerateOpen} />

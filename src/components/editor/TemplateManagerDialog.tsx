@@ -21,7 +21,6 @@ export function TemplateManagerDialog({ open, onOpenChange }: Props) {
   // Refresh templates list when the dialog opens
   useEffect(() => {
     if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTemplates(getTemplateIndex())
     }
   }, [open])

@@ -4,8 +4,9 @@ import React, { useEffect, useState, useCallback, useRef } from "react"
 import { useEditor, CANVAS_WIDTH, CANVAS_HEIGHT } from "@/store/editor-store"
 import type { EditorElement } from "@/types/editor"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, X, Expand, Minimize, Sparkles, Pause, Play, Clock, StickyNote } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronDown, X, Expand, Minimize, Sparkles, Pause, Play, Clock, StickyNote, Volume2, VolumeX } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { playClickSound, playWhooshSound, playDingSound, playPopSound, playChimeSound, type SoundType, SOUND_OPTIONS } from "@/lib/sound-effects"
 
 type TransitionType = "none" | "fade" | "slide" | "zoom"
 
@@ -25,6 +26,15 @@ export function PresentationMode({ open, onOpenChange }: Props) {
   const [elapsed, setElapsed] = useState(0)
   const [showControls, setShowControls] = useState(true)
   const [showNotes, setShowNotes] = useState(false)
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [soundType, setSoundType] = useState<SoundType>("whoosh")
+  const [showSoundPicker, setShowSoundPicker] = useState(false)
+  // Exit phase: when true, the current slide's exit animations are playing
+  // before switching to the next slide. Set when the user navigates away;
+  // cleared after the exit animations finish (then the slide changes).
+  const [exiting, setExiting] = useState(false)
+  const pendingIndexRef = useRef<number | null>(null)
+  const pendingDirRef = useRef<"forward" | "backward">("forward")
   // Live viewport size — drives the slide scale. Updates on resize and
   // fullscreen-toggle so the slide always fits the current window.
   const [viewport, setViewport] = useState<{ w: number; h: number }>(() => ({
@@ -56,15 +66,64 @@ export function PresentationMode({ open, onOpenChange }: Props) {
 
   const goToSlide = useCallback((newIndex: number, dir: "forward" | "backward" = "forward") => {
     const clamped = Math.max(0, Math.min(slides.length - 1, newIndex))
-    if (clamped !== index) {
+    if (clamped === index) return
+    // Play transition sound based on user's selected sound type
+    if (soundEnabled) {
+      if (clamped === slides.length - 1 && dir === "forward") {
+        // Always use ding for reaching the last slide (special cue)
+        playDingSound()
+      } else {
+        // Use the user's selected sound type for normal transitions
+        switch (soundType) {
+          case "click": playClickSound(); break
+          case "whoosh": playWhooshSound(); break
+          case "ding": playDingSound(); break
+          case "pop": playPopSound(); break
+          case "chime": playChimeSound(); break
+          case "none": break
+        }
+      }
+    }
+    // Check if the CURRENT slide has any exit animations. If so, play them
+    // first, then switch after they complete. If not, switch immediately.
+    const currentSlide = slides[index]
+    const hasExitAnims = currentSlide && !currentSlide.rawHtml && currentSlide.elements.some(
+      (el) => el.exit && el.exit !== "none" && !el.id.startsWith("sf-"),
+    )
+    if (hasExitAnims && !exiting) {
+      // Enter exit phase: trigger exit animations, then switch after max duration
+      pendingIndexRef.current = clamped
+      pendingDirRef.current = dir
+      setExiting(true)
+      setAnimKey((k) => k + 1) // re-mount elements so exit animations restart
+      // Compute the max exit animation end time (duration + delay)
+      const maxExitTime = Math.max(
+        ...currentSlide.elements
+          .filter((el) => el.exit && el.exit !== "none")
+          .map((el) => (el.exitDuration || 600) + (el.exitDelay || 0)),
+      )
+      setTimeout(() => {
+        setExiting(false)
+        setDirection(pendingDirRef.current)
+        setAnimKey((k) => k + 1)
+        setIndex(pendingIndexRef.current!)
+        if (slides[pendingIndexRef.current!]) {
+          setCurrentSlide(slides[pendingIndexRef.current!].id)
+        }
+        pendingIndexRef.current = null
+      }, maxExitTime + 50)
+      return
+    }
+    // No exit animations or already exiting — switch immediately
+    if (!exiting) {
       setDirection(dir)
       setAnimKey((k) => k + 1)
+      setIndex(clamped)
+      if (slides[clamped]) {
+        setCurrentSlide(slides[clamped].id)
+      }
     }
-    setIndex(clamped)
-    if (slides[clamped]) {
-      setCurrentSlide(slides[clamped].id)
-    }
-  }, [slides, setCurrentSlide, index])
+  }, [slides, setCurrentSlide, index, exiting, soundEnabled, soundType])
 
   const next = useCallback(() => goToSlide(index + 1, "forward"), [goToSlide, index])
   const prev = useCallback(() => goToSlide(index - 1, "backward"), [goToSlide, index])
@@ -307,12 +366,12 @@ export function PresentationMode({ open, onOpenChange }: Props) {
               {masterVisible && masterElements.length > 0 && (
                 <>
                   {masterElements.slice().sort((a, b) => a.zIndex - b.zIndex).map((el) => (
-                    <PresentationElement key={`master-${el.id}`} el={el} />
+                    <PresentationElement key={`master-${el.id}`} el={el} exiting={exiting} />
                   ))}
                 </>
               )}
               {slideElements.map((el) => (
-                <PresentationElement key={el.id} el={el} />
+                <PresentationElement key={`${el.id}-${animKey}`} el={el} exiting={exiting} />
               ))}
             </div>
           )}
@@ -458,6 +517,64 @@ export function PresentationMode({ open, onOpenChange }: Props) {
               Notes
             </Button>
           )}
+          <div className="relative flex items-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-white hover:bg-white/10 gap-1.5 rounded-r-none"
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              title={soundEnabled ? "Mute sounds" : "Enable sounds"}
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              {soundEnabled ? "Sound" : "Muted"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-white hover:bg-white/10 rounded-l-none px-1.5 border-l border-white/20"
+              onClick={() => setShowSoundPicker(!showSoundPicker)}
+              title="Choose transition sound"
+            >
+              <ChevronDown className="w-3 h-3" />
+            </Button>
+            {showSoundPicker && (
+              <div className="absolute bottom-full mb-2 right-0 w-44 bg-popover border rounded-lg shadow-xl p-1 z-50 animate-in fade-in zoom-in-95">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-2 py-1">
+                  Transition Sound
+                </p>
+                {SOUND_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => {
+                      setSoundType(opt.value)
+                      setSoundEnabled(true)
+                      setShowSoundPicker(false)
+                      // Preview the sound
+                      switch (opt.value) {
+                        case "click": playClickSound(); break
+                        case "whoosh": playWhooshSound(); break
+                        case "ding": playDingSound(); break
+                        case "pop": playPopSound(); break
+                        case "chime": playChimeSound(); break
+                      }
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between px-2 py-1.5 rounded text-xs hover:bg-accent transition-colors text-left",
+                      soundType === opt.value && "bg-accent font-medium",
+                    )}
+                  >
+                    <div className="flex flex-col">
+                      <span>{opt.label}</span>
+                      <span className="text-[9px] text-muted-foreground">{opt.desc}</span>
+                    </div>
+                    {soundType === opt.value && (
+                      <span className="text-[10px] text-primary">●</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <Button
             variant="ghost"
             size="sm"
@@ -504,17 +621,95 @@ export function PresentationMode({ open, onOpenChange }: Props) {
 }
 
 // ---------- Presentation Element renderer ----------
-function PresentationElement({ el }: { el: EditorElement }) {
+// Map entrance animation type → CSS keyframe name (see globals.css).
+const ENTRANCE_KEYFRAMES: Record<string, string> = {
+  "fade": "el-entrance-fade",
+  "slide-up": "el-entrance-slide-up",
+  "slide-down": "el-entrance-slide-down",
+  "slide-left": "el-entrance-slide-left",
+  "slide-right": "el-entrance-slide-right",
+  "zoom": "el-entrance-zoom",
+  "bounce": "el-entrance-bounce",
+  "spin": "el-entrance-spin",
+}
+// Map exit animation type → CSS keyframe name.
+const EXIT_KEYFRAMES: Record<string, string> = {
+  "fade": "el-exit-fade",
+  "slide-up": "el-exit-slide-up",
+  "slide-down": "el-exit-slide-down",
+  "slide-left": "el-exit-slide-left",
+  "slide-right": "el-exit-slide-right",
+  "zoom": "el-exit-zoom",
+  "bounce": "el-exit-bounce",
+  "spin": "el-exit-spin",
+}
+// Map emphasis animation type → CSS keyframe name.
+const EMPHASIS_KEYFRAMES: Record<string, string> = {
+  "pulse": "el-emphasis-pulse",
+  "spin-continuous": "el-emphasis-spin-continuous",
+  "wiggle": "el-emphasis-wiggle",
+  "bounce-continuous": "el-emphasis-bounce-continuous",
+  "glow": "el-emphasis-glow",
+  "shake": "el-emphasis-shake",
+  "flash": "el-emphasis-flash",
+}
+
+function PresentationElement({ el, exiting }: { el: EditorElement; exiting: boolean }) {
+  const entrance = el.entrance && el.entrance !== "none" ? el.entrance : null
+  const entranceDuration = el.entranceDuration ?? 600
+  const entranceDelay = el.entranceDelay ?? 0
+  const exitAnim = el.exit && el.exit !== "none" ? el.exit : null
+  const exitDuration = el.exitDuration ?? 600
+  const exitDelay = el.exitDelay ?? 0
+  const emphasisAnim = el.emphasis && el.emphasis !== "none" && !exiting ? el.emphasis : null
+  const emphasisDuration = el.emphasisDuration ?? 1000
+  // When exiting, prefer the exit animation; otherwise use entrance.
+  const activeAnim = exiting && exitAnim ? exitAnim : entrance
+  const activeDuration = exiting && exitAnim ? exitDuration : entranceDuration
+  const activeDelay = exiting && exitAnim ? exitDelay : entranceDelay
+  const activeKeyframe = exiting && exitAnim
+    ? EXIT_KEYFRAMES[exitAnim]
+    : (entrance ? ENTRANCE_KEYFRAMES[entrance] : null)
+  const activeClass = exiting && exitAnim ? "el-exit" : (entrance ? "el-entrance" : null)
+  // The entrance animation uses CSS transform/opacity. To avoid clashing
+  // with the element's own `transform: rotate(...)`, we wrap the element
+  // in an outer div that carries the animation, and put the rotation on
+  // the inner div. The outer div is positioned; the inner div is sized.
+  const animationStyle = activeAnim && activeKeyframe
+    ? ({
+        "--el-anim-name": activeKeyframe,
+        "--el-anim-duration": `${activeDuration}ms`,
+        "--el-anim-delay": `${activeDelay}ms`,
+      } as React.CSSProperties)
+    : {}
+  // Emphasis style — applied to the INNER div so it loops independently
+  // of the entrance/exit animation on the outer div.
+  const emphasisKeyframe = emphasisAnim ? EMPHASIS_KEYFRAMES[emphasisAnim] : null
+  const emphasisStyle = emphasisAnim && emphasisKeyframe
+    ? ({
+        "--el-anim-name": emphasisKeyframe,
+        "--el-anim-duration": `${emphasisDuration}ms`,
+      } as React.CSSProperties)
+    : {}
   return (
     <div
+      className={activeClass || undefined}
       style={{
         position: "absolute",
         left: el.x,
         top: el.y,
         width: el.width,
         height: el.height,
-        transform: `rotate(${el.rotation}deg)`,
         opacity: el.opacity,
+        ...animationStyle,
+      }}
+    >
+    <div
+      className={emphasisAnim ? "el-emphasis" : undefined}
+      style={{
+        width: "100%",
+        height: "100%",
+        transform: `rotate(${el.rotation}deg)`,
         background: el.fill,
         borderRadius: el.borderRadius,
         border: el.strokeWidth && el.stroke && el.stroke !== "transparent"
@@ -524,6 +719,7 @@ function PresentationElement({ el }: { el: EditorElement }) {
           ? `${el.shadowX || 0}px ${el.shadowY || 0}px ${el.shadowBlur || 24}px ${el.shadowColor || "rgba(15,23,42,0.15)"}`
           : "none",
         overflow: "hidden",
+        ...emphasisStyle,
       }}
     >
       {el.type === "text" && (
@@ -595,6 +791,7 @@ function PresentationElement({ el }: { el: EditorElement }) {
           dangerouslySetInnerHTML={{ __html: (el as any).html || "" }}
         />
       )}
+    </div>
     </div>
   )
 }

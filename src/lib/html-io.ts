@@ -203,14 +203,14 @@ ${styleBlocks}
 <style>
   html, body { margin: 0; padding: 0; background: ${escapeForCssValue(detectedBg)}; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Songti SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; }
   body { min-height: 100%; overflow: visible; }
-  /* Force the slide section visible + displayed.
+  /* Force the slide section itself visible + displayed.
      Only override display:none on the SECTION — don't touch children's
      display values (they may use flex/grid/absolute for layout). */
   ${sectionTag}${sectionClass ? "." + sectionClass.split(/\s+/).filter(Boolean).join(".") : ""} {
     visibility: visible !important;
     opacity: 1 !important;
-    pointer-events: auto !important;
     display: block !important;
+    pointer-events: auto !important;
   }
   /* Force reveal/animation-gated elements visible — opacity + transform only.
      Do NOT override display here (would break flex/grid layout). */
@@ -230,7 +230,7 @@ ${styleBlocks}
     filter: none !important;
   }
   /* Force visibility on ALL descendants — but ONLY visibility, NOT display.
-     This catches visibility:hidden without breaking layout. */
+     This catches visibility:hidden without breaking layout (flex/grid/absolute). */
   ${sectionTag}, ${sectionTag} * {
     visibility: visible !important;
   }
@@ -262,10 +262,20 @@ ${cleanedSectionHtml}
 
 /**
  * Detect the natural rendered width × height of a slide container.
- *  - width: explicit Tailwind class `w-[NNNpx]`, or inline width style, or
- *    data-width, in that order. Falls back to 1280.
- *  - height: explicit Tailwind class `h-[NNNpx]` (markers in Z.ai decks),
- *    inline height style, or a high min-height. Falls back to 720.
+ *
+ * Detection priority (first match wins):
+ *  1. `data-width` / `data-height` attributes on the section
+ *  2. Tailwind `w-[NNNpx]` / `h-[NNNpx]` classes
+ *  3. Inline `style="width: NNNpx"` / `style="height: NNNpx"`
+ *  4. CSS rules in `<style>` blocks targeting common slide/stage selectors
+ *     (`.slide`, `.deck-stage`, `.ppt-slide`, etc.). This is essential for
+ *     decks that define the stage size in a stylesheet rather than inline —
+ *     e.g. the attached test file uses `.deck-stage { width: 1920px;
+ *     height: 1080px }` and `.slide { width: 1920px; height: 1080px }` in
+ *     a `<style>` block, with NO inline size on the section. Without this
+ *     step the slide fell back to 1280×720 and clipped all content.
+ *
+ * Falls back to 1280×720.
  */
 function detectSlideSize(el: Element, doc?: Document): { width: number; height: number } {
   const out = { width: 1280, height: 720 }
@@ -291,13 +301,13 @@ function detectSlideSize(el: Element, doc?: Document): { width: number; height: 
   if (hStyle) out.height = parseInt(hStyle[1], 10)
 
   // Step 4: scan <style> blocks for rules targeting common slide/stage
-  // selectors. Many AI-generated decks (e.g. the attached test file)
-  // define the stage size in a stylesheet, not inline on the element —
-  // e.g. `.deck-stage { width: 1920px; height: 1080px }` in a <style>
-  // block. Without this step the slide falls back to 1280×720 and clips
-  // all content.
+  // selectors. Many AI-generated decks (and the attached test file) define
+  // the stage size in a stylesheet, not inline on the element.
   if (doc) {
     const fromCss = detectSlideSizeFromStyles(doc)
+    // Only adopt the CSS-detected size if it's LARGER than what we have —
+    // a deck that explicitly says 1920×1080 should never be shrunk back to
+    // 1280×720 by a default.
     if (fromCss.width > out.width) out.width = fromCss.width
     if (fromCss.height > out.height) out.height = fromCss.height
   }
@@ -305,18 +315,18 @@ function detectSlideSize(el: Element, doc?: Document): { width: number; height: 
 }
 
 /**
- * Scan all <style> blocks in the document for CSS rules that set an
- * explicit pixel width/height on common slide-stage selectors. Returns
- * the largest width/height found (so a 1920×1080 declaration wins over
- * the 1280×720 default).
+ * Scan all `<style>` blocks in the document for CSS rules that set an
+ * explicit pixel width/height on common slide-stage selectors. Returns the
+ * largest width and height found (so a 1920×1080 declaration wins over the
+ * 1280×720 default).
  *
- * Selectors considered: .deck-stage, .slide-stage, .slide-container,
- * .slide-page, .ppt-slide, .pptx-slide, .deck-slide, .slide
+ * Selectors considered (in roughly decreasing specificity):
+ *   .deck-stage, .slide-stage, .slide-container, .slide-page,
+ *   .ppt-slide, .pptx-slide, .deck-slide, .slide
  *
- * We deliberately do NOT use a full CSS parser — the corpus is small
- * and predictable, and a regex over
- *   <selector> { ... width: NNNpx ... height: NNNpx ... }
- * is robust enough for AI-generated decks.
+ * We deliberately do NOT use a full CSS parser — the corpus is small and
+ * predictable, and a regex over `selector { ... width: NNNpx; height:
+ * NNNpx ... }` is robust enough for AI-generated decks.
  */
 function detectSlideSizeFromStyles(doc: Document): { width: number; height: number } {
   const out = { width: 0, height: 0 }
@@ -324,7 +334,7 @@ function detectSlideSizeFromStyles(doc: Document): { width: number; height: numb
     ".deck-stage", ".slide-stage", ".slide-container", ".slide-page",
     ".ppt-slide", ".pptx-slide", ".deck-slide", ".slide",
   ]
-  // Build one combined alternation. Escape dots for regex.
+  // Build one combined selector alternation. Escape dots for regex.
   const selRe = selectors.map((s) => s.replace(/\./g, "\\.")).join("|")
   const styleEls = Array.from(doc.querySelectorAll("style"))
   for (const styleEl of styleEls) {

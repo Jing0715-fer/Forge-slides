@@ -43,16 +43,26 @@ export interface StoredProject {
   masterElements?: unknown[]
 }
 
-/** Save a project to IndexedDB. Returns true on success. */
+/** Save a project to IndexedDB. Returns true on success.
+ *
+ * We resolve on the TRANSACTION's `oncomplete` (not just the put request's
+ * `onsuccess`). Resolving on `req.onsuccess` can return before the data is
+ * actually committed — a read opened in a new transaction right after may
+ * not see the write, which previously caused "clicking a recent project
+ * loads nothing / loads the wrong project" races. Waiting for the
+ * transaction to fully commit guarantees the data is durable before we
+ * tell the caller it's safe.
+ */
 export async function idbSaveProject(project: StoredProject): Promise<boolean> {
   try {
     const db = await openDB()
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_PROJECTS, "readwrite")
       const store = tx.objectStore(STORE_PROJECTS)
-      const req = store.put(project)
-      req.onsuccess = () => resolve(true)
-      req.onerror = () => reject(req.error)
+      store.put(project)
+      tx.oncomplete = () => resolve(true)
+      tx.onerror = () => reject(tx.error)
+      tx.onabort = () => reject(tx.error || new Error("transaction aborted"))
     })
   } catch (e) {
     console.warn("idbSaveProject failed:", e)

@@ -1,5 +1,6 @@
 import type { Slide, EditorElement } from "@/types/editor"
 import { idbSaveProject, idbLoadProject, isIndexedDBAvailable, type StoredProject } from "./indexed-db"
+import { patchSlideRawHtml } from "./slide-patch"
 
 const STORAGE_KEY = "slideforge:autosave:v2"
 const TIMESTAMP_KEY = "slideforge:autosave:ts:v2"
@@ -80,7 +81,8 @@ export async function loadFromLocalStorage(): Promise<AutosaveData | null> {
         const stored = await idbLoadProject(AUTOSAVE_IDB_KEY)
         if (stored && stored.slides && stored.slides.length > 0) {
           return {
-            slides: stored.slides as Slide[],
+            // Patch rawHtml for projects saved before the .reveal CSS fix
+            slides: (stored.slides as Slide[]).map(patchSlideRawHtml),
             currentSlideId: data.currentSlideId,
             masterElements: (stored.masterElements || []) as EditorElement[],
             savedAt: data.savedAt,
@@ -89,7 +91,7 @@ export async function loadFromLocalStorage(): Promise<AutosaveData | null> {
       }
       // Normal localStorage data
       if (data.slides && Array.isArray(data.slides) && data.slides.length > 0) {
-        return data
+        return { ...data, slides: data.slides.map(patchSlideRawHtml) }
       }
     }
     // Try v1 format for backward compatibility
@@ -97,7 +99,7 @@ export async function loadFromLocalStorage(): Promise<AutosaveData | null> {
     if (v1Raw) {
       const v1Data = JSON.parse(v1Raw) as AutosaveData
       if (v1Data.slides && Array.isArray(v1Data.slides)) {
-        return { ...v1Data, masterElements: [] }
+        return { ...v1Data, masterElements: [], slides: v1Data.slides.map(patchSlideRawHtml) }
       }
     }
     // Try IndexedDB (in case localStorage was cleared but IDB still has data)
@@ -105,7 +107,7 @@ export async function loadFromLocalStorage(): Promise<AutosaveData | null> {
       const stored = await idbLoadProject(AUTOSAVE_IDB_KEY)
       if (stored && stored.slides && stored.slides.length > 0) {
         return {
-          slides: stored.slides as Slide[],
+          slides: (stored.slides as Slide[]).map(patchSlideRawHtml),
           currentSlideId: stored.slides[0]?.id || "",
           masterElements: (stored.masterElements || []) as EditorElement[],
           savedAt: stored.savedAt,

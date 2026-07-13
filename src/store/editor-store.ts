@@ -395,6 +395,43 @@ interface EditorState {
   // aspect ratio — e.g. a 16:10 deck at 1280×800, a 4:3 deck at 1024×768, or
   // a presentation at 1920×1080 for a high-DPI export.
   setSlideSize: (id: string, width: number, height: number) => void
+  // Per-element entrance animation (PPT-style). Sets the entrance type,
+  // duration (ms), and delay (ms) for the given element.
+  setElementAnimation: (
+    id: string,
+    entrance: import("@/types/editor").EntranceAnimation,
+    duration?: number,
+    delay?: number,
+  ) => void
+  // Per-element exit animation. Sets the exit type, duration, delay.
+  setElementExitAnimation: (
+    id: string,
+    exit: import("@/types/editor").ExitAnimation,
+    duration?: number,
+    delay?: number,
+  ) => void
+  // Per-element emphasis animation (loops continuously). Sets type + duration.
+  setElementEmphasisAnimation: (
+    id: string,
+    emphasis: import("@/types/editor").EmphasisAnimation,
+    duration?: number,
+  ) => void
+  // Set the animation trigger (when the entrance plays in presentation mode).
+  setElementAnimationTrigger: (
+    id: string,
+    trigger: import("@/types/editor").AnimationTrigger,
+  ) => void
+  // Copy all animation settings (entrance + exit + emphasis + trigger) from one
+  // element to one or more target elements — "animation format painter".
+  copyElementAnimation: (sourceId: string) => void
+  pasteElementAnimation: (targetIds: string[]) => void
+  // Reorder an element within the slide's animation sequence (animationOrder).
+  // `from` and `to` are indices into the animationOrder array.
+  reorderAnimation: (from: number, to: number) => void
+  // Set the slide's animation playback mode (sequential vs together).
+  setAnimationPlayback: (mode: "sequential" | "together") => void
+  // Reorder the animation sequence by moving an element ID to a new position.
+  moveAnimationTo: (elementId: string, toIndex: number) => void
   // Master elements
   promoteToMaster: (ids: string[]) => void
   demoteFromMaster: (ids: string[]) => void
@@ -407,6 +444,18 @@ interface EditorState {
   copyFormat: (id: string) => void
   pasteFormat: (ids: string[]) => void
   formatClipboard: Partial<EditorElement> | null
+  // Animation format painter (copy/paste entrance+exit+emphasis between elements)
+  animationClipboard: {
+    entrance: import("@/types/editor").EntranceAnimation
+    entranceDuration?: number
+    entranceDelay?: number
+    exit: import("@/types/editor").ExitAnimation
+    exitDuration?: number
+    exitDelay?: number
+    emphasis: import("@/types/editor").EmphasisAnimation
+    emphasisDuration?: number
+    animationTrigger: import("@/types/editor").AnimationTrigger
+  } | null
   // history
   undo: () => void
   redo: () => void
@@ -457,6 +506,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   selectedIds: [],
   clipboard: [],
   formatClipboard: null,
+  animationClipboard: null,
   masterElements: [],
   masterVisible: true,
   past: [],
@@ -964,6 +1014,218 @@ export const useEditor = create<EditorState>((set, get) => ({
         sl.id === id ? { ...sl, width: w, height: h } : sl,
       )
       return { slides, past: pushHistory(s.past, s.slides, "Resize slide", "Maximize2"), future: [] }
+    })
+  },
+
+  setElementAnimation: (id, entrance, duration, delay) => {
+    set((s) => {
+      const slides = s.slides.map((slide) => {
+        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+        return {
+          ...slide,
+          elements: slide.elements.map((el) =>
+            el.id === id
+              ? ({
+                  ...el,
+                  entrance,
+                  entranceDuration: duration ?? (entrance === "none" ? undefined : 600),
+                  entranceDelay: delay ?? (entrance === "none" ? undefined : 0),
+                } as EditorElement)
+              : el,
+          ),
+        }
+      })
+      return {
+        slides,
+        past: pushHistory(s.past, s.slides, entrance === "none" ? "Remove animation" : "Set animation", "Sparkles"),
+        future: [],
+      }
+    })
+    // Maintain the slide's animationOrder: when an element gets an entrance
+    // animation, add it to the order (if not already present); when set to
+    // "none", remove it. This keeps the timeline pane in sync with element
+    // changes without requiring the user to manually manage the order.
+    set((s) => {
+      const cur = s.currentSlideId || s.slides[0]?.id
+      const slides = s.slides.map((sl) => {
+        if (sl.id !== cur) return sl
+        let order = sl.animationOrder ? [...sl.animationOrder] : []
+        if (entrance === "none") {
+          order = order.filter((oid) => oid !== id)
+        } else {
+          if (!order.includes(id)) order.push(id)
+        }
+        return { ...sl, animationOrder: order.length > 0 ? order : undefined }
+      })
+      return { slides }
+    })
+  },
+
+  setElementExitAnimation: (id, exit, duration, delay) => {
+    set((s) => {
+      const slides = s.slides.map((slide) => {
+        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+        return {
+          ...slide,
+          elements: slide.elements.map((el) =>
+            el.id === id
+              ? ({
+                  ...el,
+                  exit,
+                  exitDuration: duration ?? (exit === "none" ? undefined : 600),
+                  exitDelay: delay ?? (exit === "none" ? undefined : 0),
+                } as EditorElement)
+              : el,
+          ),
+        }
+      })
+      return {
+        slides,
+        past: pushHistory(s.past, s.slides, exit === "none" ? "Remove exit animation" : "Set exit animation", "Sparkles"),
+        future: [],
+      }
+    })
+  },
+
+  setElementEmphasisAnimation: (id, emphasis, duration) => {
+    set((s) => {
+      const slides = s.slides.map((slide) => {
+        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+        return {
+          ...slide,
+          elements: slide.elements.map((el) =>
+            el.id === id
+              ? ({
+                  ...el,
+                  emphasis,
+                  emphasisDuration: duration ?? (emphasis === "none" ? undefined : 1000),
+                } as EditorElement)
+              : el,
+          ),
+        }
+      })
+      return {
+        slides,
+        past: pushHistory(s.past, s.slides, emphasis === "none" ? "Remove emphasis" : "Set emphasis", "Sparkles"),
+        future: [],
+      }
+    })
+  },
+
+  copyElementAnimation: (sourceId) => {
+    set((s) => {
+      const slide = s.slides.find((sl) => sl.id === (s.currentSlideId || s.slides[0]?.id))
+      if (!slide) return s
+      const source = slide.elements.find((e) => e.id === sourceId)
+      if (!source) return s
+      return {
+        animationClipboard: {
+          entrance: source.entrance || "none",
+          entranceDuration: source.entranceDuration,
+          entranceDelay: source.entranceDelay,
+          exit: source.exit || "none",
+          exitDuration: source.exitDuration,
+          exitDelay: source.exitDelay,
+          emphasis: source.emphasis || "none",
+          emphasisDuration: source.emphasisDuration,
+          animationTrigger: source.animationTrigger || "with-slide",
+        },
+      }
+    })
+  },
+
+  setElementAnimationTrigger: (id, trigger) => {
+    set((s) => {
+      const slides = s.slides.map((slide) => {
+        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+        return {
+          ...slide,
+          elements: slide.elements.map((el) =>
+            el.id === id ? ({ ...el, animationTrigger: trigger } as EditorElement) : el,
+          ),
+        }
+      })
+      return {
+        slides,
+        past: pushHistory(s.past, s.slides, "Set animation trigger", "Sparkles"),
+        future: [],
+      }
+    })
+  },
+
+  pasteElementAnimation: (targetIds) => {
+    set((s) => {
+      if (!s.animationClipboard) return s
+      const clip = s.animationClipboard
+      const slides = s.slides.map((slide) => {
+        if (slide.id !== (s.currentSlideId || s.slides[0]?.id)) return slide
+        return {
+          ...slide,
+          elements: slide.elements.map((el) => {
+            if (!targetIds.includes(el.id)) return el
+            return {
+              ...el,
+              entrance: clip.entrance,
+              entranceDuration: clip.entranceDuration,
+              entranceDelay: clip.entranceDelay,
+              exit: clip.exit,
+              exitDuration: clip.exitDuration,
+              exitDelay: clip.exitDelay,
+              emphasis: clip.emphasis,
+              emphasisDuration: clip.emphasisDuration,
+              animationTrigger: clip.animationTrigger,
+            } as EditorElement
+          }),
+        }
+      })
+      return {
+        slides,
+        past: pushHistory(s.past, s.slides, "Paste animation", "Sparkles"),
+        future: [],
+      }
+    })
+  },
+
+  reorderAnimation: (from, to) => {
+    set((s) => {
+      const cur = s.currentSlideId || s.slides[0]?.id
+      const slides = s.slides.map((sl) => {
+        if (sl.id !== cur) return sl
+        const order = sl.animationOrder ? [...sl.animationOrder] : []
+        if (from < 0 || from >= order.length || to < 0 || to >= order.length) return sl
+        const [moved] = order.splice(from, 1)
+        order.splice(to, 0, moved)
+        return { ...sl, animationOrder: order }
+      })
+      return { slides, past: pushHistory(s.past, s.slides, "Reorder animation", "Sparkles"), future: [] }
+    })
+  },
+
+  setAnimationPlayback: (mode) => {
+    set((s) => {
+      const cur = s.currentSlideId || s.slides[0]?.id
+      const slides = s.slides.map((sl) =>
+        sl.id === cur ? { ...sl, animationPlayback: mode } : sl,
+      )
+      return { slides, past: pushHistory(s.past, s.slides, "Set playback mode", "Sparkles"), future: [] }
+    })
+  },
+
+  moveAnimationTo: (elementId, toIndex) => {
+    set((s) => {
+      const cur = s.currentSlideId || s.slides[0]?.id
+      const slides = s.slides.map((sl) => {
+        if (sl.id !== cur) return sl
+        const order = sl.animationOrder ? [...sl.animationOrder] : []
+        const fromIndex = order.indexOf(elementId)
+        if (fromIndex < 0) return sl
+        const clampedTo = Math.max(0, Math.min(toIndex, order.length - 1))
+        if (fromIndex === clampedTo) return sl
+        order.splice(fromIndex, 1)
+        order.splice(clampedTo, 0, elementId)
+        return { ...sl, animationOrder: order }
+      })
+      return { slides, past: pushHistory(s.past, s.slides, "Reorder animation", "Sparkles"), future: [] }
     })
   },
 

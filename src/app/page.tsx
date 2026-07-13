@@ -36,32 +36,27 @@ export default function Home() {
     try {
       // Version check: if the stored data version is older than the current
       // code version, clear all cached data so the user gets a fresh import
-      // with all CSS fixes (reveal override, display:block, etc.). This
-      // prevents stale rawHtml from being loaded when the code has been
-      // updated — old cached projects would otherwise show invisible
-      // slides even after the fix shipped, because the iframe carries the
-      // OLD rawHtml without the override CSS.
-      const DATA_VERSION = "v16-overlay-fix"
-      try {
-        const storedVersion = localStorage.getItem("slideforge:data-version")
-        if (storedVersion !== DATA_VERSION) {
-          console.log("[SlideForge] Data version mismatch, clearing cache for fresh import")
-          try {
-            localStorage.removeItem("slideforge:recent-projects:v2")
-            localStorage.removeItem("slideforge:autosave:v2")
-            localStorage.removeItem("slideforge:autosave:ts:v2")
-            localStorage.removeItem("slideforge:recent-projects:v1")
-            localStorage.removeItem("slideforge:autosave:v1")
-            localStorage.setItem("slideforge:data-version", DATA_VERSION)
-          } catch { /* localStorage may be unavailable */ }
-          // Async IndexedDB deletion — don't block
-          try {
-            if (typeof indexedDB !== "undefined") {
-              indexedDB.deleteDatabase("slideforge")
-            }
-          } catch { /* ignore */ }
-        }
-      } catch { /* version check is best-effort */ }
+      // with all CSS fixes (reveal override, etc.). This prevents stale
+      // rawHtml from being loaded when the code has been updated.
+      const DATA_VERSION = "v15-layout-safe"
+      const storedVersion = localStorage.getItem("slideforge:data-version")
+      if (storedVersion !== DATA_VERSION) {
+        console.log("[SlideForge] Data version mismatch, clearing cache for fresh import")
+        try {
+          localStorage.removeItem("slideforge:recent-projects:v2")
+          localStorage.removeItem("slideforge:autosave:v2")
+          localStorage.removeItem("slideforge:autosave:ts:v2")
+          localStorage.removeItem("slideforge:recent-projects:v1")
+          localStorage.removeItem("slideforge:autosave:v1")
+          localStorage.setItem("slideforge:data-version", DATA_VERSION)
+        } catch { /* localStorage may be unavailable */ }
+        // Async IndexedDB deletion — don't block
+        try {
+          if (typeof indexedDB !== "undefined") {
+            indexedDB.deleteDatabase("slideforge")
+          }
+        } catch { /* ignore */ }
+      }
 
       // Quick synchronous check for saved session
       if (checkSavedSession()) {
@@ -144,48 +139,47 @@ export default function Home() {
   }, [loadProject])
 
   const handleOpenRecent = useCallback(async (project: RecentProject) => {
-      // PRIMARY PATH: load the EXACT project the user clicked, by ID, from
-      // IndexedDB. This is the only correct source — localStorage autosave
-      // holds whatever was last edited, which is almost always a DIFFERENT
-      // project than the one the user clicked. Falling back to it (as the
-      // old code did) is what caused "clicking any recent project opens the
-      // most recent one".
-      const data = await loadRecentProjectData(project.id)
-      if (data && data.slides.length > 0) {
-        loadProject({
-          slides: data.slides,
-          currentSlideId: data.slides[0]?.id || "",
-        })
-        if (data.masterElements) {
-          useEditor.setState({ masterElements: data.masterElements })
-        }
-        setSkipBanner(true)
-        toast.success(`Loaded ${data.slides.length} slide(s) from "${project.name}"`)
-        setView("editor")
-        return
+    // Primary path: load the EXACT project the user clicked, by ID, from
+    // IndexedDB. This is the only correct source — localStorage autosave
+    // holds whatever was last edited, which is almost always a DIFFERENT
+    // project than the one the user clicked. Falling back to it (as the
+    // old code did) is what caused "clicking any recent project opens the
+    // most recent one".
+    const data = await loadRecentProjectData(project.id)
+    if (data && data.slides.length > 0) {
+      loadProject({
+        slides: data.slides,
+        currentSlideId: data.slides[0]?.id || "",
+      })
+      if (data.masterElements) {
+        useEditor.setState({ masterElements: data.masterElements })
       }
+      setSkipBanner(true)
+      toast.success(`Loaded ${data.slides.length} slide(s) from "${project.name}"`)
+      setView("editor")
+      return
+    }
 
-      // SECONDARY PATH: some legacy / small projects keep their slides inline
-      // in the localStorage metadata. This is the SAME project (matched by
-      // the `project` reference the user clicked), so it's safe to use.
-      if (project.slides && project.slides.length > 0) {
-        loadProject({
-          slides: project.slides,
-          currentSlideId: project.slides[0]?.id || "",
-        })
-        if (project.masterElements) {
-          useEditor.setState({ masterElements: project.masterElements })
-        }
-        setSkipBanner(true)
-        toast.success(`Loaded ${project.slides.length} slide(s) from "${project.name}"`)
-        setView("editor")
-        return
+    // Secondary path: some legacy / small projects keep their slides inline
+    // in the localStorage metadata. This is the SAME project (matched by
+    // the `project` reference the user clicked), so it's safe.
+    if (project.slides && project.slides.length > 0) {
+      loadProject({
+        slides: project.slides,
+        currentSlideId: project.slides[0]?.id || "",
+      })
+      if (project.masterElements) {
+        useEditor.setState({ masterElements: project.masterElements })
       }
+      setSkipBanner(true)
+      toast.success(`Loaded ${project.slides.length} slide(s) from "${project.name}"`)
+      setView("editor")
+      return
+    }
 
-      // NO DATA FOUND — show a clear error instead of silently loading some
-      // other project (which is what the old autosave fallback did). The
-      // user can re-import the file from disk.
-      toast.error(`Could not load "${project.name}". Please re-import the file.`)
+    // Data genuinely unavailable — tell the user clearly instead of
+    // silently loading an unrelated project.
+    toast.error(`"${project.name}" data is no longer available. Please re-import the HTML file.`)
   }, [loadProject])
 
   const handleBackToLanding = useCallback(() => {

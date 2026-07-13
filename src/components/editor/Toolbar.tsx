@@ -8,8 +8,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Type, Square, Circle, Triangle, Minus, Image as ImageIcon, Upload,
   Undo2, Redo2, Copy, Trash2, BringToFront, SendToBack,
-  ZoomIn, ZoomOut, Grid3x3, Magnet, Download, FileText, HelpCircle, Search, ImageDown, Play, Clipboard, Paintbrush, Maximize,
-  Bookmark, Wand2, History,
+  ZoomIn, ZoomOut, Grid3x3, Magnet, Download, FileText, HelpCircle, Search, ImageDown, Images, Play, Clipboard, Paintbrush, Maximize,
+  Bookmark, Wand2, History, LayoutGrid, Crown,
 } from "lucide-react"
 import { AlignmentToolbar } from "./AlignmentToolbar"
 import { TextStylePresets } from "./TextStylePresets"
@@ -26,14 +26,17 @@ interface Props {
   onShowShortcuts: () => void
   onFindReplace: () => void
   onPngExport: () => void
+  onBatchPngExport: () => void
   onPresent: () => void
   onSaveTemplate: () => void
   onOpenTemplates: () => void
   onAiGenerate: () => void
   onAiHistory: () => void
+  onOpenSorter: () => void
+  onOpenMasterEditor: () => void
 }
 
-export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShortcuts, onFindReplace, onPngExport, onPresent, onSaveTemplate, onOpenTemplates, onAiGenerate, onAiHistory }: Props) {
+export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShortcuts, onFindReplace, onPngExport, onBatchPngExport, onPresent, onSaveTemplate, onOpenTemplates, onAiGenerate, onAiHistory, onOpenSorter, onOpenMasterEditor }: Props) {
   const {
     addElement, selectedIds, removeElements, duplicateElements,
     bringToFront, sendToBack, undo, redo, past, future,
@@ -250,6 +253,12 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
               <TooltipBtn label="Toggle Smart Guides" onClick={toggleGuides} active={showGuides}>
                 <Magnet className="w-4 h-4" />
               </TooltipBtn>
+              <TooltipBtn label="Slide Sorter (grid view)" onClick={onOpenSorter}>
+                <LayoutGrid className="w-4 h-4" />
+              </TooltipBtn>
+              <TooltipBtn label="Master Slide Editor" onClick={onOpenMasterEditor}>
+                <Crown className="w-4 h-4" />
+              </TooltipBtn>
             </div>
           </ToolbarGroup>
 
@@ -290,6 +299,14 @@ export function Toolbar({ onImportClick, onExportClick, onPdfExport, onShowShort
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="text-xs">Export current slide as PNG</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="icon" onClick={onBatchPngExport} className="h-8 w-8 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition-colors hidden xl:inline-flex" title="Batch export ALL slides as PNG" disabled={slides.length === 0}>
+                    <Images className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">Batch export all slides as PNG</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -402,6 +419,10 @@ function TooltipBtn({
         <Button
           variant={active ? "secondary" : "ghost"}
           size="icon"
+          // Expose the tooltip label as the accessible name so screen readers
+          // and automated tests can identify icon-only buttons.
+          aria-label={label}
+          title={label}
           className={cn(
             "h-8 w-8 transition-all hover:bg-background hover:shadow-sm rounded-md",
             active && "ring-1 ring-primary/30 bg-primary/5 text-primary",

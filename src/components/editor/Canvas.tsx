@@ -5,6 +5,7 @@ import { CanvasElementView } from "./CanvasElement"
 import { MasterElementView } from "./MasterElementView"
 import type { EditorElement } from "@/types/editor"
 import { cn } from "@/lib/utils"
+import { Move } from "lucide-react"
 
 // Attach `pointermove` + `pointerup` + `pointercancel` to `window` for
 // a drag operation. Returns a cleanup function that removes all three
@@ -273,6 +274,7 @@ export function Canvas() {
                 text directly. No overlay elements needed — the iframe IS the editor. */}
             {slide.rawHtml && (
               <RawHtmlFrame
+                key={slide.id}
                 html={slide.rawHtml}
                 zoom={zoom}
                 slideId={slide.id}
@@ -624,14 +626,15 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
             return
           }
 
-          // Skip elements outside the slide. Use the ACTUAL slide
-          // dimensions (the `width`/`height` props), not hardcoded
-          // 1280×720 — otherwise every element positioned beyond
-          // 1280×720 in a 1920×1080 deck is filtered out and no click
-          // overlay is created for it. That was the root cause of "can
-          // only select the background, other elements are unclickable"
-          // on high-resolution imported decks.
-          if (rect.right < 0 || rect.bottom < 0 || rect.left > width || rect.top > height) {
+          // Skip elements outside the slide. Use the ACTUAL slide dimensions
+          // (the `width`/`height` props), not hardcoded 1280×720 — otherwise
+          // every element positioned beyond 1280×720 in a 1920×1080 deck is
+          // filtered out and no click overlay is created for it. That was
+          // the root cause of "can only select the background, other
+          // elements are unclickable" on high-resolution imported decks.
+          const boundsW = width
+          const boundsH = height
+          if (rect.right < 0 || rect.bottom < 0 || rect.left > boundsW || rect.top > boundsH) {
             scanElements(child, depth + 1)
             return
           }
@@ -831,7 +834,7 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
       // the parent thinks the size is, to avoid an infinite re-render
       // loop (setSlideSize → re-render → handleLoad → measure → setSlideSize).
       if (onSizeMeasured) {
-        // bodyRect reflects the iframe's body size, which is 100% of the
+        // bodyRect reflects the IFRAME's body size, which is 100% of the
         // iframe element — i.e. whatever width/height we already set. That's
         // useless when the CONTENT (e.g. .deck-stage at 1920×1080) overflows
         // a 1280×720 iframe. Use scrollWidth/scrollHeight instead, which
@@ -936,6 +939,22 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
 
     const el = doc.querySelector(`[data-sf-id="${item.id}"]`) as HTMLElement
     if (!el) return
+
+    // Guard: don't allow dragging elements that cover most of the slide
+    // (background, deck-stage, paper containers). These are structural
+    // wrappers — dragging them moves the entire page, which is never what
+    // the user wants. They can still be selected (click) and have their
+    // properties edited, but not moved.
+    const slideW = width
+    const slideH = height
+    const coverageRatio = (item.width * item.height) / (slideW * slideH)
+    if (coverageRatio > 0.85) {
+      // Select it but don't start a drag — this prevents "whole page moves"
+      // when the user tries to drag the background container.
+      setSelectedOverlay(item.id)
+      useEditor.getState().setSelected([item.id])
+      return
+    }
 
     // Use the OVERLAY's stored position as the baseline (canvas coordinates)
     const currentX = item.x
@@ -1044,6 +1063,74 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
         // Don't convert to absolute position (that causes offsetParent
         // and coordinate system mismatches).
         // The transform persists and the element stays at its visual position.
+        syncChanges()
+        if (onTextBlur) onTextBlur()
+      }
+    }
+    window.addEventListener("pointermove", onMove)
+    window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onUp)
+    window.addEventListener("blur", onUp)
+  }
+
+  // Variant of handleOverlayMouseDown that BYPASSES the coverage guard.
+  // Used by the "Move" handle on large elements (coverage > 85%) so the
+  // user can intentionally drag them via the dedicated handle, even though
+  // clicking the body doesn't start a drag. This is the "refinement" from
+  // the worklog priority #9 — large elements are non-draggable by default
+  // (to prevent accidental whole-page moves) but CAN be moved via the
+  // explicit Move handle.
+  function handleOverlayMouseDownAllowLarge(e: React.MouseEvent, item: OverlayItem) {
+    // Re-use the same drag logic but skip the coverage guard by calling
+    // a copy of the handler body. We do this by temporarily setting a
+    // flag that the guard checks, then calling the original handler.
+    // Simpler: just call the original — it will hit the guard and return
+    // early. So instead, we inline the drag start here without the guard.
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    const iframe = iframeRef.current
+    if (!iframe) return
+    const doc = (iframe as any)._sfDoc as Document
+    const win = (iframe as any)._sfWin as Window
+    const syncChanges = (iframe as any)._sfSync as () => void
+    if (!doc || !win || !syncChanges) return
+    const el = doc.querySelector(`[data-sf-id="${item.id}"]`) as HTMLElement
+    if (!el) return
+
+    const currentX = item.x
+    const currentY = item.y
+    const currentW = item.width
+    const currentH = item.height
+    const existingTransform = el.style.transform || ""
+    const tMatch = existingTransform.match(/translate\(\s*([-\d.]+)px\s*,\s*([-\d.]+)px\s*\)/)
+    const startTx = tMatch ? parseFloat(tMatch[1]) : 0
+    const startTy = tMatch ? parseFloat(tMatch[2]) : 0
+    const startX = e.clientX
+    const startY = e.clientY
+    let isDragging = false
+    const dragThreshold = 5
+
+    const onMove = (ev: PointerEvent) => {
+      let dx = (ev.clientX - startX) / zoom
+      let dy = (ev.clientY - startY) / zoom
+      if (!isDragging) {
+        if (Math.abs(dx) < dragThreshold && Math.abs(dy) < dragThreshold) return
+        isDragging = true
+      }
+      let newLeft = currentX + dx
+      let newTop = currentY + dy
+      el.style.transform = `translate(${startTx + dx}px, ${startTy + dy}px)`
+      setOverlays(prev => prev.map(o =>
+        o.id === item.id ? { ...o, x: newLeft, y: newTop } : o
+      ))
+    }
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove)
+      window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onUp)
+      window.removeEventListener("blur", onUp)
+      if (isDragging) {
         syncChanges()
         if (onTextBlur) onTextBlur()
       }
@@ -1220,11 +1307,17 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
             height: item.height,
             background: "transparent",
             border: selectedOverlay === item.id ? "2px solid #6366f1" : "1px dashed transparent",
-            // Shallower (less nested) elements get HIGHER z-index so the
-            // outer container of a nested stack is selectable. Without this,
-            // the deepest nested overlay always wins the click race and
-            // "outer" elements become unclickable.
-            zIndex: 100 + Math.max(0, 20 - item.depth),
+            // Deeper (more nested) elements get HIGHER z-index so the actual
+            // leaf content (text, images) is clickable. The outer container
+            // (background, deck-stage) gets a LOWER z-index so it only catches
+            // clicks on areas not covered by any child. This fixes the bug
+            // where "only the background is selectable" — the background
+            // overlay was previously on top of everything.
+            //
+            // depth 0 (outermost) → zIndex 100 (lowest)
+            // depth 1 → zIndex 101
+            // depth N → zIndex 100 + N (highest, most specific)
+            zIndex: 100 + item.depth,
           }}
           title={item.label}
         >
@@ -1234,6 +1327,29 @@ function RawHtmlFrame({ html, zoom, slideId, width, height, onTextChange, onText
               {item.label}
             </div>
           )}
+          {/* Move handle — shown for large elements (coverage > 85%) that
+              are otherwise non-draggable. This gives the user a dedicated
+              drag point so they CAN move large containers if they really
+              want to, without the body click starting a drag accidentally. */}
+          {selectedOverlay === item.id && (() => {
+            const cov = (item.width * item.height) / (width * height)
+            return cov > 0.85 ? (
+              <div
+                onMouseDown={(e) => {
+                  // Allow drag from the move handle even for large elements.
+                  // We call the drag handler directly, bypassing the
+                  // coverage guard.
+                  e.stopPropagation()
+                  handleOverlayMouseDownAllowLarge(e, item)
+                }}
+                className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-500 text-white text-[10px] font-medium shadow-lg cursor-move hover:bg-indigo-600 transition-colors"
+                title="Drag to move this element"
+              >
+                <Move className="w-3 h-3" />
+                Move
+              </div>
+            ) : null
+          })()}
           {/* Resize handles */}
           {selectedOverlay === item.id && [
             "se", "sw", "ne", "nw", "e", "w", "n", "s"
